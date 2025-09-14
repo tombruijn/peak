@@ -1,0 +1,184 @@
+use std::io::stdout;
+
+use color_eyre::Result;
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::{
+    DefaultTerminal, Frame, Terminal, TerminalOptions, Viewport,
+    buffer::Buffer,
+    layout::{Constraint, Layout, Rect},
+    prelude::CrosstermBackend,
+    style::{Color, Modifier, Style, Stylize},
+    text::{Line, Span, Text},
+    widgets::{Block, List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
+};
+
+const CURRENT_BRANCH_STYLE: Style = Style::new().fg(Color::Green);
+const NORMAL_BRANCH_STYLE: Style = Style::new();
+const ARROW_STYLE: Style = Style::new().fg(Color::Blue);
+
+fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
+    let terminal = ratatui::init();
+    // let backend = CrosstermBackend::new(stdout());
+    // let viewport = Viewport::Fixed(Rect::new(0, 0, 100, 50));
+    // let terminal = Terminal::with_options(backend, TerminalOptions { viewport })?;
+    let result = App::default().run(terminal);
+    ratatui::restore();
+    result
+}
+
+#[derive(Debug)]
+struct Branch {
+    name: String,
+    last_commit_at: u64,
+}
+
+#[derive(Default, Debug)]
+struct Branches {
+    entries: Vec<Branch>,
+    state: ListState,
+}
+
+#[derive(Debug, Default)]
+pub struct App {
+    display_filter: bool,
+    active_filter: Option<String>,
+    branches: Branches,
+}
+
+impl App {
+    pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        self.branches = Branches {
+            entries: vec![
+                Branch {
+                    name: "main".to_string(),
+                    last_commit_at: 0,
+                },
+                Branch {
+                    name: "other".to_string(),
+                    last_commit_at: 1,
+                },
+            ],
+            ..Default::default()
+        };
+
+        loop {
+            if !self.display_filter && self.branches.state.selected().is_none() {
+                self.branches.state.select_first();
+            }
+
+            terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
+
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        return Ok(());
+                    }
+                    KeyCode::Esc if self.display_filter => self.display_filter = false,
+                    KeyCode::Enter if self.display_filter => self.display_filter = false,
+                    KeyCode::Backspace if self.display_filter => {
+                        if let Some(mut filter) = self.active_filter {
+                            filter.pop();
+                            self.active_filter = Some(filter)
+                        }
+                    }
+                    key_code if self.display_filter => {
+                        if let Some(char) = key_code.as_char() {
+                            if let Some(filter) = self.active_filter {
+                                self.active_filter = Some(format!("{}{}", filter, char))
+                            } else {
+                                self.active_filter = Some(char.to_string())
+                            };
+                        }
+                    }
+                    KeyCode::Char('/') if !self.display_filter => {
+                        self.active_filter = None;
+                        self.branches.state.select(None);
+                        self.display_filter = true
+                    }
+                    KeyCode::Esc if !self.display_filter => {
+                        return Ok(());
+                    }
+                    KeyCode::Enter if !self.display_filter => {
+                        self.select_current_item();
+                        return Ok(());
+                    }
+                    KeyCode::Up | KeyCode::BackTab => self.move_to_previous_item(),
+                    KeyCode::Char('k') => self.move_to_previous_item(),
+                    KeyCode::Down | KeyCode::Tab => self.move_to_next_item(),
+                    KeyCode::Char('j') => self.move_to_next_item(),
+                    KeyCode::Char('q') => return Ok(()),
+                    KeyCode::Char('R') => {
+                        self.active_filter = None;
+                    }
+                    _ => {}
+                },
+                Event::Mouse(_) => {}
+                Event::Resize(_, _) => {} // TODO: rerender
+                _ => {}
+            }
+        }
+    }
+
+    fn move_to_previous_item(&mut self) {
+        self.branches.state.select_previous()
+    }
+
+    fn move_to_next_item(&mut self) {
+        self.branches.state.select_next()
+    }
+
+    fn select_current_item(&mut self) {
+        todo!("Checkout branch")
+    }
+}
+
+impl Widget for &mut App {
+    fn render(self, area: Rect, buffer: &mut Buffer) {
+        let current = 1;
+        let selected = self.branches.state.selected();
+
+        let [filter_area, list_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
+
+        if self.display_filter || self.active_filter.is_some() {
+            let filter = if let Some(filter) = &self.active_filter {
+                filter
+            } else {
+                &"".to_string()
+            };
+            Paragraph::new(format!("Filter branch: {}", filter)).render(filter_area, buffer);
+        }
+
+        let items = self
+            .branches
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, branch)| {
+                if let Some(filter) = &self.active_filter
+                    && !branch.name.contains(filter)
+                {
+                    return None;
+                }
+                let (style, label) = if current == index {
+                    (CURRENT_BRANCH_STYLE, Span::raw(" (current)"))
+                } else {
+                    (NORMAL_BRANCH_STYLE, Span::default())
+                };
+                let selector = if selected == Some(index) {
+                    Span::styled("▶", ARROW_STYLE)
+                } else {
+                    Span::raw(" ")
+                };
+                Some(ListItem::new(Line::from(vec![
+                    selector,
+                    Span::raw(" "),
+                    Span::styled(branch.name.clone(), style),
+                    label,
+                ])))
+            });
+        let list = List::new(items);
+        StatefulWidget::render(list, list_area, buffer, &mut self.branches.state);
+    }
+}
