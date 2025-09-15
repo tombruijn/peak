@@ -2,6 +2,7 @@ use std::io::stdout;
 
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use git2::{BranchType, Repository};
 use ratatui::{
     DefaultTerminal, Frame, Terminal, TerminalOptions, Viewport,
     buffer::Buffer,
@@ -29,6 +30,7 @@ fn main() -> color_eyre::Result<()> {
 #[derive(Debug)]
 struct Branch {
     name: String,
+    current: bool,
     last_commit_at: u64,
 }
 
@@ -47,19 +49,7 @@ pub struct App {
 
 impl App {
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        self.branches = Branches {
-            entries: vec![
-                Branch {
-                    name: "main".to_string(),
-                    last_commit_at: 0,
-                },
-                Branch {
-                    name: "other".to_string(),
-                    last_commit_at: 1,
-                },
-            ],
-            ..Default::default()
-        };
+        self.fetch_branches()?;
 
         loop {
             if !self.display_filter && self.branches.state.selected().is_none() {
@@ -130,11 +120,35 @@ impl App {
     fn select_current_item(&mut self) {
         todo!("Checkout branch")
     }
+
+    fn fetch_branches(&mut self) -> Result<()> {
+        let repository = Repository::init(".")?;
+        self.branches.entries = repository
+            .branches(Some(BranchType::Local))?
+            .filter_map(|branch_item| {
+                if let Ok((branch, _branch_type)) = branch_item {
+                    let name = if let Ok(Some(name)) = branch.name() {
+                        name.to_string()
+                    } else {
+                        return None;
+                    };
+
+                    Some(Branch {
+                        name,
+                        current: branch.is_head(),
+                        last_commit_at: 0,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(())
+    }
 }
 
 impl Widget for &mut App {
     fn render(self, area: Rect, buffer: &mut Buffer) {
-        let current = 1;
         let selected = self.branches.state.selected();
 
         let [header_area, list_area] =
@@ -162,7 +176,7 @@ impl Widget for &mut App {
                 {
                     return None;
                 }
-                let (style, label) = if current == index {
+                let (style, label) = if branch.current {
                     (CURRENT_BRANCH_STYLE, Span::raw(" (current)"))
                 } else {
                     (NORMAL_BRANCH_STYLE, Span::default())
