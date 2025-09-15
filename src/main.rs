@@ -137,7 +137,7 @@ impl Widget for &mut App {
         let current = 1;
         let selected = self.branches.state.selected();
 
-        let [filter_area, list_area] =
+        let [header_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
 
         if self.display_filter || self.active_filter.is_some() {
@@ -146,7 +146,9 @@ impl Widget for &mut App {
             } else {
                 &"".to_string()
             };
-            Paragraph::new(format!("Filter branch: {}", filter)).render(filter_area, buffer);
+            Paragraph::new(format!("Filter branches: {}", filter)).render(header_area, buffer);
+        } else {
+            Paragraph::new("Select branch:").render(header_area, buffer);
         }
 
         let items = self
