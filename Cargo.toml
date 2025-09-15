@@ -11,3 +11,4 @@ crossterm = "0.29.0"
 ratatui = "0.29.0"
 color-eyre = "0.6.3"
 git2 = "0.20.2"
+chrono = { version = "0.4", features = ["clock"] }

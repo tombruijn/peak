@@ -1,16 +1,14 @@
-use std::io::stdout;
-
+use chrono::{DateTime, TimeZone, Utc};
 use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use git2::{BranchType, Repository};
 use ratatui::{
-    DefaultTerminal, Frame, Terminal, TerminalOptions, Viewport,
+    DefaultTerminal, TerminalOptions, Viewport,
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
-    prelude::CrosstermBackend,
-    style::{Color, Modifier, Style, Stylize},
-    text::{Line, Span, Text},
-    widgets::{Block, List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
+    style::{Color, Style},
+    text::{Line, Span},
+    widgets::{List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
 };
 
 const CURRENT_BRANCH_STYLE: Style = Style::new().fg(Color::Green);
@@ -31,7 +29,7 @@ fn main() -> color_eyre::Result<()> {
 struct Branch {
     name: String,
     current: bool,
-    last_commit_at: u64,
+    last_commit_at: DateTime<Utc>,
 }
 
 #[derive(Default, Debug)]
@@ -132,17 +130,22 @@ impl App {
                     } else {
                         return None;
                     };
+                    let commit = branch.get().peel_to_commit().ok()?;
+                    let last_commit_at = Utc.timestamp_opt(commit.time().seconds(), 0).single()?;
 
                     Some(Branch {
                         name,
                         current: branch.is_head(),
-                        last_commit_at: 0,
+                        last_commit_at,
                     })
                 } else {
                     None
                 }
             })
             .collect();
+        self.branches
+            .entries
+            .sort_by(|a, b| b.last_commit_at.cmp(&a.last_commit_at));
         Ok(())
     }
 }
@@ -165,34 +168,48 @@ impl Widget for &mut App {
             Paragraph::new("Select branch:").render(header_area, buffer);
         }
 
-        let items = self
+        let now = Utc::now();
+        let items: Vec<ListItem> = self
             .branches
             .entries
             .iter()
             .enumerate()
-            .filter_map(|(index, branch)| {
-                if let Some(filter) = &self.active_filter
-                    && !branch.name.contains(filter)
-                {
-                    return None;
+            .filter(|(_index, branch)| {
+                if let Some(filter) = &self.active_filter {
+                    branch.name.contains(filter)
+                } else {
+                    true
                 }
+            })
+            .map(|(index, branch)| {
                 let (style, label) = if branch.current {
-                    (CURRENT_BRANCH_STYLE, Span::raw(" (current)"))
+                    (CURRENT_BRANCH_STYLE, Span::raw(" [current]"))
                 } else {
                     (NORMAL_BRANCH_STYLE, Span::default())
                 };
+                let duration = now.signed_duration_since(branch.last_commit_at);
+                let time_ago = if duration.num_days() > 0 {
+                    format!(" ({} days ago)", duration.num_days())
+                } else if duration.num_hours() > 0 {
+                    format!(" ({} hours ago)", duration.num_hours())
+                } else {
+                    format!(" ({} minutes ago)", duration.num_minutes().max(1))
+                };
+
                 let selector = if selected == Some(index) {
                     Span::styled("▶", ARROW_STYLE)
                 } else {
                     Span::raw(" ")
                 };
-                Some(ListItem::new(Line::from(vec![
+                ListItem::new(Line::from(vec![
                     selector,
                     Span::raw(" "),
                     Span::styled(branch.name.clone(), style),
+                    Span::raw(time_ago),
                     label,
-                ])))
-            });
+                ]))
+            })
+            .collect();
         let list = List::new(items);
         StatefulWidget::render(list, list_area, buffer, &mut self.branches.state);
     }
