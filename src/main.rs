@@ -176,7 +176,7 @@ impl Widget for &mut App {
             .enumerate()
             .filter(|(_index, branch)| {
                 if let Some(filter) = &self.active_filter {
-                    branch.name.contains(filter)
+                    branch.name.to_lowercase().contains(&filter.to_lowercase())
                 } else {
                     true
                 }
