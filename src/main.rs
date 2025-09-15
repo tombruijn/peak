@@ -18,10 +18,9 @@ const ARROW_STYLE: Style = Style::new().fg(Color::Blue);
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
-    let terminal = ratatui::init();
-    // let backend = CrosstermBackend::new(stdout());
-    // let viewport = Viewport::Fixed(Rect::new(0, 0, 100, 50));
-    // let terminal = Terminal::with_options(backend, TerminalOptions { viewport })?;
+    let terminal = ratatui::init_with_options(TerminalOptions {
+        viewport: Viewport::Inline(10),
+    });
     let result = App::default().run(terminal);
     ratatui::restore();
     result
