@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
+    widgets::{List, ListItem, Paragraph, Widget},
 };
 
 const CURRENT_BRANCH_STYLE: Style = Style::new().fg(Color::Green);
@@ -20,7 +20,7 @@ fn main() -> color_eyre::Result<()> {
     let terminal = ratatui::init_with_options(TerminalOptions {
         viewport: Viewport::Inline(10),
     });
-    let result = App::default().run(terminal);
+    let result = App::new()?.run(terminal);
     ratatui::restore();
     result
 }
@@ -35,25 +35,30 @@ struct Branch {
 #[derive(Default, Debug)]
 struct Branches {
     entries: Vec<Branch>,
-    state: ListState,
 }
 
 #[derive(Debug, Default)]
 pub struct App {
     display_filter: bool,
     active_filter: Option<String>,
+    cursor_index: Option<usize>,
+    included_branch_indexes: Vec<usize>,
     branches: Branches,
 }
 
 impl App {
+    fn new() -> Result<Self> {
+        let mut app = Self {
+            cursor_index: Some(0),
+            ..Default::default()
+        };
+        app.fetch_branches()?;
+        app.apply_filter();
+        Ok(app)
+    }
+
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        self.fetch_branches()?;
-
         loop {
-            if !self.display_filter && self.branches.state.selected().is_none() {
-                self.branches.state.select_first();
-            }
-
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
 
             match event::read()? {
@@ -61,12 +66,19 @@ impl App {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(());
                     }
-                    KeyCode::Esc if self.display_filter => self.display_filter = false,
-                    KeyCode::Enter if self.display_filter => self.display_filter = false,
+                    KeyCode::Enter | KeyCode::Esc if self.display_filter => {
+                        self.display_filter = false;
+                        self.cursor_index = Some(0);
+                    }
                     KeyCode::Backspace if self.display_filter => {
                         if let Some(mut filter) = self.active_filter {
                             filter.pop();
-                            self.active_filter = Some(filter)
+                            self.active_filter = if filter.is_empty() {
+                                None
+                            } else {
+                                Some(filter)
+                            };
+                            self.apply_filter();
                         }
                     }
                     key_code if self.display_filter => {
@@ -76,11 +88,11 @@ impl App {
                             } else {
                                 self.active_filter = Some(char.to_string())
                             };
+                            self.apply_filter();
                         }
                     }
                     KeyCode::Char('/') if !self.display_filter => {
-                        self.active_filter = None;
-                        self.branches.state.select(None);
+                        self.cursor_index = None;
                         self.display_filter = true
                     }
                     KeyCode::Esc if !self.display_filter => {
@@ -97,6 +109,7 @@ impl App {
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('R') => {
                         self.active_filter = None;
+                        self.apply_filter();
                     }
                     _ => {}
                 },
@@ -108,15 +121,45 @@ impl App {
     }
 
     fn move_to_previous_item(&mut self) {
-        self.branches.state.select_previous()
+        if let Some(cursor_index) = self.cursor_index {
+            let new_cursor_index = cursor_index.checked_sub(1);
+            if new_cursor_index.is_some() {
+                self.cursor_index = new_cursor_index;
+            }
+        } else {
+            self.cursor_index = Some(0)
+        }
     }
 
     fn move_to_next_item(&mut self) {
-        self.branches.state.select_next()
+        if let Some(cursor_index) = self.cursor_index {
+            if cursor_index + 1 < self.included_branch_indexes.len() {
+                self.cursor_index = Some(cursor_index + 1)
+            }
+        } else {
+            self.cursor_index = Some(0)
+        }
     }
 
     fn select_current_item(&mut self) {
-        todo!("Checkout branch")
+        todo!("Checkout branch: {:?}", self.cursor_index);
+    }
+
+    fn apply_filter(&mut self) {
+        self.included_branch_indexes = self
+            .branches
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_index, branch)| {
+                if let Some(filter) = &self.active_filter {
+                    branch.name.to_lowercase().contains(&filter.to_lowercase())
+                } else {
+                    true
+                }
+            })
+            .map(|(index, _branch)| index)
+            .collect();
     }
 
     fn fetch_branches(&mut self) -> Result<()> {
@@ -152,8 +195,6 @@ impl App {
 
 impl Widget for &mut App {
     fn render(self, area: Rect, buffer: &mut Buffer) {
-        let selected = self.branches.state.selected();
-
         let [header_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
 
@@ -170,18 +211,11 @@ impl Widget for &mut App {
 
         let now = Utc::now();
         let items: Vec<ListItem> = self
-            .branches
-            .entries
+            .included_branch_indexes
             .iter()
             .enumerate()
-            .filter(|(_index, branch)| {
-                if let Some(filter) = &self.active_filter {
-                    branch.name.to_lowercase().contains(&filter.to_lowercase())
-                } else {
-                    true
-                }
-            })
-            .map(|(index, branch)| {
+            .map(|(item_index, &branch_index)| {
+                let branch = &self.branches.entries[branch_index];
                 let (style, label) = if branch.current {
                     (CURRENT_BRANCH_STYLE, Span::raw(" [current]"))
                 } else {
@@ -196,7 +230,7 @@ impl Widget for &mut App {
                     format!(" ({} minutes ago)", duration.num_minutes().max(1))
                 };
 
-                let selector = if selected == Some(index) {
+                let selector = if self.cursor_index == Some(item_index) {
                     Span::styled("▶", ARROW_STYLE)
                 } else {
                     Span::raw(" ")
@@ -210,7 +244,6 @@ impl Widget for &mut App {
                 ]))
             })
             .collect();
-        let list = List::new(items);
-        StatefulWidget::render(list, list_area, buffer, &mut self.branches.state);
+        List::new(items).render(list_area, buffer);
     }
 }
