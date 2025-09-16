@@ -148,6 +148,8 @@ impl App {
             let new_cursor_index = cursor_index.checked_sub(1);
             if new_cursor_index.is_some() {
                 self.cursor_index = new_cursor_index;
+            } else {
+                self.cursor_index = Some(self.branches.included_indexes.len() - 1);
             }
         } else {
             self.cursor_index = Some(0)
@@ -158,6 +160,8 @@ impl App {
         if let Some(cursor_index) = self.cursor_index {
             if cursor_index + 1 < self.branches.included_indexes.len() {
                 self.cursor_index = Some(cursor_index + 1)
+            } else {
+                self.cursor_index = Some(0)
             }
         } else {
             self.cursor_index = Some(0)
