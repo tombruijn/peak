@@ -37,9 +37,16 @@ struct Branches {
     entries: Vec<Branch>,
 }
 
+#[derive(Debug, Default, PartialEq)]
+enum DisplayMode {
+    #[default]
+    Normal,
+    Filter,
+}
+
 #[derive(Debug, Default)]
 pub struct App {
-    display_filter: bool,
+    display_mode: DisplayMode,
     active_filter: Option<String>,
     cursor_index: Option<usize>,
     included_branch_indexes: Vec<usize>,
@@ -57,6 +64,24 @@ impl App {
         Ok(app)
     }
 
+    fn is_normal_mode(&self) -> bool {
+        self.display_mode == DisplayMode::Normal
+    }
+
+    fn is_filter_mode(&self) -> bool {
+        self.display_mode == DisplayMode::Filter
+    }
+
+    fn switch_to_normal_mode(&mut self) {
+        self.display_mode = DisplayMode::Normal;
+        self.cursor_index = Some(0);
+    }
+
+    fn switch_to_filter_mode(&mut self) {
+        self.display_mode = DisplayMode::Filter;
+        self.cursor_index = None;
+    }
+
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         loop {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
@@ -66,11 +91,10 @@ impl App {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(());
                     }
-                    KeyCode::Enter | KeyCode::Esc if self.display_filter => {
-                        self.display_filter = false;
-                        self.cursor_index = Some(0);
+                    KeyCode::Enter | KeyCode::Esc if self.is_filter_mode() => {
+                        self.switch_to_normal_mode();
                     }
-                    KeyCode::Backspace if self.display_filter => {
+                    KeyCode::Backspace if self.is_filter_mode() => {
                         if let Some(mut filter) = self.active_filter {
                             filter.pop();
                             self.active_filter = if filter.is_empty() {
@@ -81,7 +105,7 @@ impl App {
                             self.apply_filter();
                         }
                     }
-                    key_code if self.display_filter => {
+                    key_code if self.is_filter_mode() => {
                         if let Some(char) = key_code.as_char() {
                             if let Some(filter) = self.active_filter {
                                 self.active_filter = Some(format!("{}{}", filter, char))
@@ -91,14 +115,14 @@ impl App {
                             self.apply_filter();
                         }
                     }
-                    KeyCode::Char('/') if !self.display_filter => {
+                    KeyCode::Char('/') if self.is_normal_mode() => {
                         self.cursor_index = None;
-                        self.display_filter = true
+                        self.switch_to_filter_mode();
                     }
-                    KeyCode::Esc if !self.display_filter => {
+                    KeyCode::Esc if self.is_normal_mode() => {
                         return Ok(());
                     }
-                    KeyCode::Enter if !self.display_filter => {
+                    KeyCode::Enter if self.is_normal_mode() => {
                         self.select_current_item();
                         return Ok(());
                     }
@@ -198,7 +222,7 @@ impl Widget for &mut App {
         let [header_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
 
-        if self.display_filter || self.active_filter.is_some() {
+        if self.is_filter_mode() || self.active_filter.is_some() {
             let filter = if let Some(filter) = &self.active_filter {
                 filter
             } else {
