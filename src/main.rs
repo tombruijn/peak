@@ -35,6 +35,7 @@ struct Branch {
 #[derive(Default, Debug)]
 struct Branches {
     entries: Vec<Branch>,
+    included_indexes: Vec<usize>,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -49,7 +50,6 @@ pub struct App {
     display_mode: DisplayMode,
     active_filter: Option<String>,
     cursor_index: Option<usize>,
-    included_branch_indexes: Vec<usize>,
     branches: Branches,
 }
 
@@ -157,7 +157,7 @@ impl App {
 
     fn move_to_next_item(&mut self) {
         if let Some(cursor_index) = self.cursor_index {
-            if cursor_index + 1 < self.included_branch_indexes.len() {
+            if cursor_index + 1 < self.branches.included_indexes.len() {
                 self.cursor_index = Some(cursor_index + 1)
             }
         } else {
@@ -170,7 +170,7 @@ impl App {
     }
 
     fn apply_filter(&mut self) {
-        self.included_branch_indexes = self
+        self.branches.included_indexes = self
             .branches
             .entries
             .iter()
@@ -235,7 +235,8 @@ impl Widget for &mut App {
 
         let now = Utc::now();
         let items: Vec<ListItem> = self
-            .included_branch_indexes
+            .branches
+            .included_indexes
             .iter()
             .enumerate()
             .map(|(item_index, &branch_index)| {
