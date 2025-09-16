@@ -36,6 +36,7 @@ struct Branch {
 struct Branches {
     entries: Vec<Branch>,
     included_indexes: Vec<usize>,
+    marked_indexes: Vec<usize>,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -125,10 +126,15 @@ impl App {
                         self.select_current_item();
                         return Ok(());
                     }
+                    KeyCode::Delete if self.is_normal_mode() => {
+                        self.delete_marked_items();
+                        return Ok(());
+                    }
                     KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => {
                         self.move_to_previous_item()
                     }
                     KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => self.move_to_next_item(),
+                    KeyCode::Char('x') => self.mark_current_item(),
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('R') => {
                         self.active_filter = None;
@@ -170,6 +176,26 @@ impl App {
 
     fn select_current_item(&mut self) {
         todo!("Checkout branch: {:?}", self.cursor_index);
+    }
+
+    fn delete_marked_items(&mut self) {
+        todo!("Delete branches: {:?}", self.branches.marked_indexes);
+    }
+
+    fn mark_current_item(&mut self) {
+        if let Some(cursor_index) = self.cursor_index {
+            let branch_index = self.branches.included_indexes[cursor_index];
+            let index_of_mark_index = self
+                .branches
+                .marked_indexes
+                .iter()
+                .position(|mark_index| *mark_index == branch_index);
+            if let Some(mark_index) = index_of_mark_index {
+                self.branches.marked_indexes.remove(mark_index);
+            } else {
+                self.branches.marked_indexes.push(branch_index);
+            }
+        }
     }
 
     fn apply_filter(&mut self) {
@@ -263,8 +289,15 @@ impl Widget for &mut App {
                 } else {
                     Span::raw(" ")
                 };
+                let mark = if self.branches.marked_indexes.contains(&branch_index) {
+                    Span::styled("■", ARROW_STYLE)
+                } else {
+                    Span::raw(" ")
+                };
                 ListItem::new(Line::from(vec![
                     selector,
+                    Span::raw(" "),
+                    mark,
                     Span::raw(" "),
                     Span::styled(branch.name.clone(), style),
                     Span::raw(time_ago),
