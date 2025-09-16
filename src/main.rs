@@ -116,7 +116,6 @@ impl App {
                         }
                     }
                     KeyCode::Char('/') if self.is_normal_mode() => {
-                        self.cursor_index = None;
                         self.switch_to_filter_mode();
                     }
                     KeyCode::Esc if self.is_normal_mode() => {
@@ -126,10 +125,10 @@ impl App {
                         self.select_current_item();
                         return Ok(());
                     }
-                    KeyCode::Up | KeyCode::BackTab => self.move_to_previous_item(),
-                    KeyCode::Char('k') => self.move_to_previous_item(),
-                    KeyCode::Down | KeyCode::Tab => self.move_to_next_item(),
-                    KeyCode::Char('j') => self.move_to_next_item(),
+                    KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => {
+                        self.move_to_previous_item()
+                    }
+                    KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => self.move_to_next_item(),
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('R') => {
                         self.active_filter = None;
