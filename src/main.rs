@@ -1,6 +1,9 @@
 use chrono::{DateTime, TimeZone, Utc};
 use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    terminal,
+};
 use git2::{BranchType, Repository};
 use ratatui::{
     DefaultTerminal, TerminalOptions, Viewport,
@@ -11,18 +14,18 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
 };
 
-const VIEWPORT_HEIGHT: u16 = 10;
-const LIST_HEIGHT: u16 = VIEWPORT_HEIGHT - 1;
+const UI_HEIGHT: u16 = 1;
 const CURRENT_BRANCH_STYLE: Style = Style::new().fg(Color::Green);
 const NORMAL_BRANCH_STYLE: Style = Style::new();
 const ARROW_STYLE: Style = Style::new().fg(Color::Blue);
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
-    let terminal = ratatui::init_with_options(TerminalOptions {
-        viewport: Viewport::Inline(VIEWPORT_HEIGHT),
-    });
-    let result = App::new()?.run(terminal);
+    let (_terminal_columns, terminal_rows) = terminal::size()?;
+    let viewport_height = [terminal_rows, 20].iter().cloned().min().unwrap_or(20);
+    let viewport = Viewport::Inline(viewport_height);
+    let terminal = ratatui::init_with_options(TerminalOptions { viewport });
+    let result = App::new(viewport_height)?.run(terminal);
     ratatui::restore();
     result
 }
@@ -51,6 +54,7 @@ enum DisplayMode {
 
 #[derive(Debug, Default)]
 pub struct App {
+    viewport_height: u16,
     display_mode: DisplayMode,
     active_filter: Option<String>,
     cursor_index: Option<usize>,
@@ -58,13 +62,15 @@ pub struct App {
 }
 
 impl App {
-    fn new() -> Result<Self> {
+    fn new(viewport_height: u16) -> Result<Self> {
         let mut app = Self {
+            viewport_height,
             cursor_index: Some(0),
             ..Default::default()
         };
         app.fetch_branches()?;
         app.apply_filter();
+
         Ok(app)
     }
 
@@ -259,7 +265,7 @@ impl Widget for &mut App {
 
         let list_viewport_offset = if let Some(cursor_index) = self.cursor_index {
             // -1 for 0 based index
-            let list_height = LIST_HEIGHT as usize - 1;
+            let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
             if cursor_index > list_height {
                 cursor_index.checked_sub(list_height).unwrap_or_default()
             } else {
