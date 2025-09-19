@@ -283,9 +283,16 @@ impl Widget for &mut App {
             } else {
                 &"".to_string()
             };
-            Paragraph::new(format!("Filter branches: {}", filter)).render(header_area, buffer);
+            Paragraph::new(format!(
+                "Filter branches ({}/{}): {}",
+                self.branches.included_indexes.len(),
+                self.branches.entries.len(),
+                filter
+            ))
+            .render(header_area, buffer);
         } else {
-            Paragraph::new("Select branch:").render(header_area, buffer);
+            Paragraph::new(format!("Select branch ({}):", self.branches.entries.len()))
+                .render(header_area, buffer);
         }
 
         let now = Utc::now();
