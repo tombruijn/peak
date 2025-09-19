@@ -149,6 +149,7 @@ impl App {
                         self.active_filter = None;
                         self.apply_filter();
                     }
+                    KeyCode::Char('X') => self.branches.marked_indexes.clear(),
                     _ => {}
                 },
                 Event::Mouse(_) => {}
