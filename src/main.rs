@@ -8,9 +8,11 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, Paragraph, Widget},
+    widgets::{List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
 };
 
+const VIEWPORT_HEIGHT: u16 = 10;
+const LIST_HEIGHT: u16 = VIEWPORT_HEIGHT - 1;
 const CURRENT_BRANCH_STYLE: Style = Style::new().fg(Color::Green);
 const NORMAL_BRANCH_STYLE: Style = Style::new();
 const ARROW_STYLE: Style = Style::new().fg(Color::Blue);
@@ -18,7 +20,7 @@ const ARROW_STYLE: Style = Style::new().fg(Color::Blue);
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init_with_options(TerminalOptions {
-        viewport: Viewport::Inline(10),
+        viewport: Viewport::Inline(VIEWPORT_HEIGHT),
     });
     let result = App::new()?.run(terminal);
     ratatui::restore();
@@ -37,6 +39,7 @@ struct Branches {
     entries: Vec<Branch>,
     included_indexes: Vec<usize>,
     marked_indexes: Vec<usize>,
+    state: ListState,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -152,25 +155,28 @@ impl App {
     fn move_to_previous_item(&mut self) {
         if let Some(cursor_index) = self.cursor_index {
             let new_cursor_index = cursor_index.checked_sub(1);
-            if new_cursor_index.is_some() {
-                self.cursor_index = new_cursor_index;
+            if let Some(new_cursor_index) = new_cursor_index {
+                self.cursor_index = Some(new_cursor_index);
             } else {
-                self.cursor_index = Some(self.branches.included_indexes.len() - 1);
+                let branches_len = self.branches.included_indexes.len();
+                let new_cursor_index = branches_len - 1;
+                self.cursor_index = Some(new_cursor_index);
             }
         } else {
-            self.cursor_index = Some(0)
+            self.cursor_index = Some(0);
         }
     }
 
     fn move_to_next_item(&mut self) {
         if let Some(cursor_index) = self.cursor_index {
             if cursor_index + 1 < self.branches.included_indexes.len() {
-                self.cursor_index = Some(cursor_index + 1)
+                let new_cursor_index = cursor_index + 1;
+                self.cursor_index = Some(new_cursor_index);
             } else {
-                self.cursor_index = Some(0)
+                self.cursor_index = Some(0);
             }
         } else {
-            self.cursor_index = Some(0)
+            self.cursor_index = Some(0);
         }
     }
 
@@ -251,6 +257,19 @@ impl Widget for &mut App {
         let [header_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
 
+        let list_viewport_offset = if let Some(cursor_index) = self.cursor_index {
+            // -1 for 0 based index
+            let list_height = LIST_HEIGHT as usize - 1;
+            if cursor_index > list_height {
+                cursor_index.checked_sub(list_height).unwrap_or_default()
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        *self.branches.state.offset_mut() = list_viewport_offset;
+
         if self.is_filter_mode() || self.active_filter.is_some() {
             let filter = if let Some(filter) = &self.active_filter {
                 filter
@@ -305,6 +324,7 @@ impl Widget for &mut App {
                 ]))
             })
             .collect();
-        List::new(items).render(list_area, buffer);
+        let list = List::new(items);
+        StatefulWidget::render(list, list_area, buffer, &mut self.branches.state);
     }
 }
