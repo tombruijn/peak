@@ -455,7 +455,7 @@ impl App {
             Span::default().render(area, buffer)
         } else {
             let ui_layout =
-                Layout::horizontal([Constraint::Percentage(100), Constraint::Min(20)]).split(area);
+                Layout::horizontal([Constraint::Percentage(100), Constraint::Min(25)]).split(area);
             let left_column = ui_layout[0];
             let right_column = ui_layout[1];
 
@@ -472,6 +472,9 @@ impl App {
                     filter
                 ))
                 .render(left_column, buffer);
+                Paragraph::new("Press (Enter) to submit")
+                    .right_aligned()
+                    .render(right_column, buffer);
             } else {
                 let mut spans = vec![Span::raw(pluralize(
                     self.branches.entries.len() as i64,
@@ -484,10 +487,10 @@ impl App {
                     spans.push(Span::raw(" selected"));
                 }
                 Paragraph::new(Line::from(spans)).render(left_column, buffer);
+                Paragraph::new("Press (h) for help")
+                    .right_aligned()
+                    .render(right_column, buffer);
             }
-            Paragraph::new("Press (h) for help")
-                .right_aligned()
-                .render(right_column, buffer);
         }
     }
 }
