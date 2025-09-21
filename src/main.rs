@@ -444,11 +444,45 @@ impl App {
         let table = Table::new(rows, widths).column_spacing(2);
         StatefulWidget::render(table, area, buffer, &mut self.branches.state);
     }
+
+    fn render_ui(&mut self, area: Rect, buffer: &mut Buffer) {
+        if self.is_confirm_deletion_mode() {
+            Span::default().render(area, buffer)
+        } else if self.is_filter_mode() || self.active_filter.is_some() {
+            let filter = if let Some(filter) = &self.active_filter {
+                filter
+            } else {
+                &"".to_string()
+            };
+            Paragraph::new(format!(
+                "Filter branches ({}/{}): {}",
+                self.branches.included_indexes.len(),
+                self.branches.entries.len(),
+                filter
+            ))
+            .render(area, buffer);
+        } else {
+            let ui_layout =
+                Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .split(area);
+            let left_column = ui_layout[0];
+            let right_column = ui_layout[1];
+            Paragraph::new(pluralize(
+                self.branches.entries.len() as i64,
+                "branch",
+                "branches",
+            ))
+            .render(left_column, buffer);
+            Paragraph::new("Press (h) for help")
+                .right_aligned()
+                .render(right_column, buffer);
+        }
+    }
 }
 
 impl Widget for &mut App {
     fn render(self, area: Rect, buffer: &mut Buffer) {
-        let [header_area, list_area] =
+        let [ui_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
 
         let list_viewport_offset = if let Some(cursor_index) = self.cursor_index {
@@ -464,27 +498,8 @@ impl Widget for &mut App {
         };
         *self.branches.state.offset_mut() = list_viewport_offset;
 
-        if self.is_confirm_deletion_mode() {
-            Paragraph::new("Confirm branch deletion").render(header_area, buffer);
-        } else if self.is_filter_mode() || self.active_filter.is_some() {
-            let filter = if let Some(filter) = &self.active_filter {
-                filter
-            } else {
-                &"".to_string()
-            };
-            Paragraph::new(format!(
-                "Filter branches ({}/{}): {}",
-                self.branches.included_indexes.len(),
-                self.branches.entries.len(),
-                filter
-            ))
-            .render(header_area, buffer);
-        } else {
-            Paragraph::new(format!("Select branch ({}):", self.branches.entries.len()))
-                .render(header_area, buffer);
-        }
-
         self.render_list(list_area, buffer);
+        self.render_ui(ui_area, buffer);
 
         if self.is_confirm_deletion_mode() {
             let popup_area = popup_area(area, 50, 50);
