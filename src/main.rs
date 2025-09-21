@@ -448,31 +448,38 @@ impl App {
     fn render_ui(&mut self, area: Rect, buffer: &mut Buffer) {
         if self.is_confirm_deletion_mode() {
             Span::default().render(area, buffer)
-        } else if self.is_filter_mode() || self.active_filter.is_some() {
-            let filter = if let Some(filter) = &self.active_filter {
-                filter
-            } else {
-                &"".to_string()
-            };
-            Paragraph::new(format!(
-                "Filter branches ({}/{}): {}",
-                self.branches.included_indexes.len(),
-                self.branches.entries.len(),
-                filter
-            ))
-            .render(area, buffer);
         } else {
             let ui_layout =
-                Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .split(area);
+                Layout::horizontal([Constraint::Percentage(100), Constraint::Min(20)]).split(area);
             let left_column = ui_layout[0];
             let right_column = ui_layout[1];
-            Paragraph::new(pluralize(
-                self.branches.entries.len() as i64,
-                "branch",
-                "branches",
-            ))
-            .render(left_column, buffer);
+
+            if self.is_filter_mode() || self.active_filter.is_some() {
+                let filter = if let Some(filter) = &self.active_filter {
+                    filter
+                } else {
+                    &"".to_string()
+                };
+                Paragraph::new(format!(
+                    "Filter branches ({}/{}): {}",
+                    self.branches.included_indexes.len(),
+                    self.branches.entries.len(),
+                    filter
+                ))
+                .render(left_column, buffer);
+            } else {
+                let mut spans = vec![Span::raw(pluralize(
+                    self.branches.entries.len() as i64,
+                    "branch",
+                    "branches",
+                ))];
+                let selected = self.branches.marked_indexes.len();
+                if selected > 0 {
+                    spans.insert(0, Span::raw(format!("{selected}/")));
+                    spans.push(Span::raw(" selected"));
+                }
+                Paragraph::new(Line::from(spans)).render(left_column, buffer);
+            }
             Paragraph::new("Press (h) for help")
                 .right_aligned()
                 .render(right_column, buffer);
