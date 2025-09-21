@@ -14,8 +14,8 @@ use ratatui::{
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{
-        Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph,
-        StatefulWidget, Widget, Wrap,
+        Block, BorderType, Borders, Clear, Padding, Paragraph, Row, StatefulWidget, Table,
+        TableState, Widget, Wrap,
     },
 };
 
@@ -23,6 +23,7 @@ const UI_HEIGHT: u16 = 1;
 const CURRENT_BRANCH_STYLE: Style = Style::new().fg(Color::Green);
 const NORMAL_BRANCH_STYLE: Style = Style::new();
 const ARROW_STYLE: Style = Style::new().fg(Color::Blue);
+const TIME_AGO_STYLE: Style = Style::new().fg(Color::DarkGray);
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -47,7 +48,7 @@ struct Branches {
     entries: Vec<Branch>,
     included_indexes: Vec<usize>,
     marked_indexes: Vec<usize>,
-    state: ListState,
+    state: TableState,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -371,7 +372,8 @@ impl App {
 
     fn render_list(&mut self, area: Rect, buffer: &mut Buffer) {
         let now = Utc::now();
-        let mut items: Vec<ListItem> = self
+        let mut max_branch_name_length = 0;
+        let mut rows: Vec<Row> = self
             .branches
             .included_indexes
             .iter()
@@ -379,17 +381,20 @@ impl App {
             .map(|(item_index, &branch_index)| {
                 let branch = &self.branches.entries[branch_index];
                 let (style, label) = if branch.current {
-                    (CURRENT_BRANCH_STYLE, Span::raw(" [current]"))
+                    (
+                        CURRENT_BRANCH_STYLE,
+                        Span::styled(" *", CURRENT_BRANCH_STYLE),
+                    )
                 } else {
                     (NORMAL_BRANCH_STYLE, Span::default())
                 };
                 let duration = now.signed_duration_since(branch.last_commit_at);
                 let time_ago = if duration.num_days() > 0 {
-                    format!(" ({} days ago)", duration.num_days())
+                    format!("{} days ago", duration.num_days())
                 } else if duration.num_hours() > 0 {
-                    format!(" ({} hours ago)", duration.num_hours())
+                    format!("{} hours ago", duration.num_hours())
                 } else {
-                    format!(" ({} minutes ago)", duration.num_minutes().max(1))
+                    format!("{} minutes ago", duration.num_minutes().max(1))
                 };
 
                 let selector = if self.cursor_index == Some(item_index) {
@@ -402,25 +407,48 @@ impl App {
                 } else {
                     Span::raw(" ")
                 };
-                ListItem::new(Line::from(vec![
+                let branch_name_line = Line::from(vec![
                     selector,
                     Span::raw(" "),
                     mark,
                     Span::raw(" "),
                     Span::styled(branch.name.clone(), style),
-                    Span::raw(time_ago),
                     label,
-                ]))
+                ]);
+                let branch_name_length = branch_name_line.width();
+                if branch_name_length > max_branch_name_length {
+                    max_branch_name_length = branch_name_length;
+                }
+                Row::new(vec![
+                    branch_name_line,
+                    Line::from(vec![Span::styled(time_ago, TIME_AGO_STYLE)]),
+                ])
             })
             .collect();
-        if items.is_empty() {
-            items.push(ListItem::new(Span::styled(
+        if rows.is_empty() {
+            rows.push(Row::new(vec![Span::styled(
                 "No branches found. Press 'f' to edit the filter.",
                 Style::new().italic(),
-            )));
+            )]));
         }
-        let list = List::new(items);
-        StatefulWidget::render(list, area, buffer, &mut self.branches.state);
+
+        let max_branch_name_column_width = area.width as f64 * 0.75;
+        let branch_name_column_constraint =
+            if max_branch_name_length as f64 > max_branch_name_column_width {
+                // If branch name is very long, cut off the column width to 75% of the screen
+                Constraint::Percentage(75)
+            } else if let Ok(value) = max_branch_name_length.try_into() {
+                // Use branch length as column width
+                // Makes it so that the time ago timestamp isn't all the way on the other side of
+                // the screen
+                Constraint::Length(value)
+            } else {
+                // Fallback in case the custom branch name width couldn't be calculated
+                Constraint::Percentage(75)
+            };
+        let widths = [branch_name_column_constraint, Constraint::Percentage(25)];
+        let table = Table::new(rows, widths).column_spacing(2);
+        StatefulWidget::render(table, area, buffer, &mut self.branches.state);
     }
 }
 
