@@ -178,10 +178,12 @@ impl App {
 
                     // Switch to the branch on which the line cursor is
                     KeyCode::Enter if self.is_normal_mode() => {
-                        if let Err(err) = self.select_current_item() {
-                            todo!("Branch deletion error not handled: {:?}", err);
-                        } else {
-                            return Ok(());
+                        if self.cursor_index.is_some() {
+                            if let Err(err) = self.select_current_item() {
+                                panic!("Branch deletion error not handled: {:?}", err);
+                            } else {
+                                return Ok(());
+                            }
                         }
                     }
 
@@ -273,7 +275,7 @@ impl App {
                 )),
             }
         } else {
-            todo!("This should not happen: branch checkout without branch selected");
+            panic!("This should not happen: branch checkout without branch selected");
         }
     }
 
