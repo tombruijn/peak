@@ -98,7 +98,6 @@ impl App {
 
     fn switch_to_normal_mode(&mut self) {
         self.display_mode = DisplayMode::Normal;
-        self.cursor_index = Some(0);
     }
 
     fn switch_to_filter_mode(&mut self) {
@@ -131,12 +130,14 @@ impl App {
                     // Submit filter
                     KeyCode::Enter if self.is_filter_mode() => {
                         self.switch_to_normal_mode();
+                        self.cursor_index = Some(0);
                     }
                     // Dismiss and reset filter
                     KeyCode::Esc if self.is_filter_mode() => {
                         self.active_filter = None;
                         self.apply_filter();
                         self.switch_to_normal_mode();
+                        self.cursor_index = Some(0);
                     }
                     // Remove last character of the filter
                     KeyCode::Backspace if self.is_filter_mode() => {
