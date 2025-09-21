@@ -55,13 +55,13 @@ enum DisplayMode {
     #[default]
     Normal,
     Filter,
+    ConfirmDeletion,
 }
 
 pub struct App {
     repository: Repository,
     viewport_height: u16,
     display_mode: DisplayMode,
-    display_delete_popup: bool,
     active_filter: Option<String>,
     cursor_index: Option<usize>,
     branches: Branches,
@@ -74,7 +74,6 @@ impl App {
 
             viewport_height,
             display_mode: DisplayMode::default(),
-            display_delete_popup: false,
             active_filter: None,
             cursor_index: Some(0),
             branches: Branches::default(),
@@ -91,6 +90,10 @@ impl App {
 
     fn is_filter_mode(&self) -> bool {
         self.display_mode == DisplayMode::Filter
+    }
+
+    fn is_confirm_deletion_mode(&self) -> bool {
+        self.display_mode == DisplayMode::ConfirmDeletion
     }
 
     fn switch_to_normal_mode(&mut self) {
@@ -115,12 +118,14 @@ impl App {
                     }
 
                     // Confirm branch deletion
-                    KeyCode::Char('y' | 'Y') if self.display_delete_popup => {
+                    KeyCode::Char('y' | 'Y') if self.is_confirm_deletion_mode() => {
                         self.delete_marked_items()?;
                     }
                     // Exit branch deletion
-                    KeyCode::Esc | KeyCode::Char('n' | 'N') if self.display_delete_popup => {
-                        self.display_delete_popup = false;
+                    KeyCode::Esc | KeyCode::Char('n' | 'N' | 'q')
+                        if self.is_confirm_deletion_mode() =>
+                    {
+                        self.switch_to_normal_mode();
                     }
 
                     // Submit filter
@@ -180,25 +185,31 @@ impl App {
                     // But first show a confirmation prompt
                     KeyCode::Delete | KeyCode::Char('d') if self.is_normal_mode() => {
                         if !self.branches.marked_indexes.is_empty() {
-                            self.display_delete_popup = true;
+                            self.display_mode = DisplayMode::ConfirmDeletion;
                         }
                     }
                     // Mark an item for deletion
-                    KeyCode::Char('x') => self.mark_current_item(),
+                    KeyCode::Char('x') if self.is_normal_mode() => self.mark_current_item(),
                     // Reset selection
-                    KeyCode::Char('X') => self.branches.marked_indexes.clear(),
+                    KeyCode::Char('X') if self.is_normal_mode() => {
+                        self.branches.marked_indexes.clear()
+                    }
 
                     // Move up to the branch above
                     // If on the first line, wrap around to the end
-                    KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => {
+                    KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab
+                        if self.is_normal_mode() =>
+                    {
                         self.move_to_previous_item()
                     }
                     // Move down to the branch below
                     // If on the last line, wrap around to the beginning
-                    KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => self.move_to_next_item(),
+                    KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab if self.is_normal_mode() => {
+                        self.move_to_next_item()
+                    }
 
                     // Reset filter
-                    KeyCode::Char('R') => {
+                    KeyCode::Char('R') if self.is_normal_mode() => {
                         self.active_filter = None;
                         self.apply_filter();
                     }
@@ -288,7 +299,7 @@ impl App {
                 Some(0)
             }
         }
-        self.display_delete_popup = false;
+        self.switch_to_normal_mode();
         self.fetch_branches()?;
         self.apply_filter();
         Ok(())
@@ -376,7 +387,9 @@ impl Widget for &mut App {
         };
         *self.branches.state.offset_mut() = list_viewport_offset;
 
-        if self.is_filter_mode() || self.active_filter.is_some() {
+        if self.is_confirm_deletion_mode() {
+            Paragraph::new("Confirm branch deletion").render(header_area, buffer);
+        } else if self.is_filter_mode() || self.active_filter.is_some() {
             let filter = if let Some(filter) = &self.active_filter {
                 filter
             } else {
@@ -446,7 +459,7 @@ impl Widget for &mut App {
         let list = List::new(items);
         StatefulWidget::render(list, list_area, buffer, &mut self.branches.state);
 
-        if self.display_delete_popup {
+        if self.is_confirm_deletion_mode() {
             let popup_area = popup_area(area, 50, 50);
             Clear.render(popup_area, buffer);
             let marked_branches = self.branches.marked_indexes.len();
