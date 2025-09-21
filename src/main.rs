@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use chrono::{DateTime, TimeZone, Utc};
 use color_eyre::Result;
 use crossterm::{
@@ -186,8 +188,21 @@ impl App {
         }
     }
 
-    fn select_current_item(&mut self) {
-        todo!("Checkout branch: {:?}", self.cursor_index);
+    fn select_current_item(&mut self) -> Result<(), String> {
+        if let Some(cursor_index) = self.cursor_index {
+            let branch_index = self.branches.included_indexes[cursor_index];
+            let branch = &self.branches.entries[branch_index];
+            let branch_name = branch.name.clone();
+            match Command::new("git").args(["switch", &branch_name]).output() {
+                Ok(_output) => Ok(()),
+                Err(err) => Err(format!(
+                    "Could not check out '{}' branch: {}",
+                    branch_name, err
+                )),
+            }
+        } else {
+            todo!("This should not happen: branch checkout without branch selected");
+        }
     }
 
     fn delete_marked_items(&mut self) {
