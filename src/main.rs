@@ -57,6 +57,7 @@ struct Branches {
 enum DisplayMode {
     #[default]
     Normal,
+    Help,
     Filter,
     ConfirmDeletion,
 }
@@ -68,6 +69,7 @@ pub struct App {
     active_filter: Option<String>,
     cursor_index: Option<usize>,
     branches: Branches,
+    help_state: TableState,
 }
 
 impl App {
@@ -80,6 +82,7 @@ impl App {
             active_filter: None,
             cursor_index: Some(0),
             branches: Branches::default(),
+            help_state: TableState::default(),
         };
         app.fetch_branches()?;
         app.apply_filter();
@@ -99,6 +102,10 @@ impl App {
         self.display_mode == DisplayMode::ConfirmDeletion
     }
 
+    fn is_help_mode(&self) -> bool {
+        self.display_mode == DisplayMode::Help
+    }
+
     fn switch_to_normal_mode(&mut self) {
         self.display_mode = DisplayMode::Normal;
     }
@@ -106,6 +113,14 @@ impl App {
     fn switch_to_filter_mode(&mut self) {
         self.display_mode = DisplayMode::Filter;
         self.cursor_index = None;
+    }
+
+    fn switch_to_confirm_deletion_mode(&mut self) {
+        self.display_mode = DisplayMode::ConfirmDeletion;
+    }
+
+    fn switch_to_help_mode(&mut self) {
+        self.display_mode = DisplayMode::Help;
     }
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
@@ -168,6 +183,11 @@ impl App {
                         }
                     }
 
+                    // Show help
+                    KeyCode::Char('h') if self.is_normal_mode() => {
+                        self.switch_to_help_mode();
+                    }
+
                     // Switch to filter mode
                     KeyCode::Char('/' | 'f') if self.is_normal_mode() => {
                         self.switch_to_filter_mode();
@@ -193,7 +213,7 @@ impl App {
                     // But first show a confirmation prompt
                     KeyCode::Delete | KeyCode::Char('d') if self.is_normal_mode() => {
                         if !self.branches.marked_indexes.is_empty() {
-                            self.display_mode = DisplayMode::ConfirmDeletion;
+                            self.switch_to_confirm_deletion_mode();
                         }
                     }
                     // Mark an item for deletion
@@ -205,14 +225,12 @@ impl App {
 
                     // Move up to the branch above
                     // If on the first line, wrap around to the end
-                    KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab
-                        if self.is_normal_mode() =>
-                    {
+                    KeyCode::Up | KeyCode::Char('k') if self.is_normal_mode() => {
                         self.move_to_previous_item()
                     }
                     // Move down to the branch below
                     // If on the last line, wrap around to the beginning
-                    KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab if self.is_normal_mode() => {
+                    KeyCode::Down | KeyCode::Char('j') if self.is_normal_mode() => {
                         self.move_to_next_item()
                     }
 
@@ -220,6 +238,20 @@ impl App {
                     KeyCode::Char('R') if self.is_normal_mode() => {
                         self.active_filter = None;
                         self.apply_filter();
+                    }
+
+                    // Exit help
+                    KeyCode::Esc | KeyCode::Char('q' | 'h') if self.is_help_mode() => {
+                        self.switch_to_normal_mode();
+                    }
+
+                    // Move up a line
+                    KeyCode::Up | KeyCode::Char('k') if self.is_help_mode() => {
+                        self.help_state.select_previous();
+                    }
+                    // Move down a line
+                    KeyCode::Down | KeyCode::Char('j') if self.is_help_mode() => {
+                        self.help_state.select_next();
                     }
                     _ => {}
                 },
@@ -509,10 +541,123 @@ impl App {
             }
         }
     }
+
+    fn render_help(&mut self, area: Rect, buffer: &mut Buffer) {
+        let areas = Layout::vertical([Constraint::Min(1), Constraint::Percentage(100)]).split(area);
+        Block::new()
+            .title("Help reference")
+            .title_alignment(Alignment::Center)
+            .title_style(Style::new().bold())
+            .render(areas[0], buffer);
+
+        let rows = vec![
+            // Help view
+            Row::new(vec![Text::from("Help view"), Text::default()])
+                .cyan()
+                .bold(),
+            Row::new(vec![
+                Text::from("Keys").right_aligned(),
+                Text::from("Description"),
+            ])
+            .bold(),
+            Row::new(vec![
+                Text::from("q | h").right_aligned(),
+                Text::from("Exit help view"),
+            ]),
+            Row::new(vec![
+                Text::from("UP | k").right_aligned(),
+                Text::from("Move cursor up one line"),
+            ]),
+            Row::new(vec![
+                Text::from("DOWN | j").right_aligned(),
+                Text::from("Move cursor down one line"),
+            ]),
+            // Main view
+            Row::new(vec![Text::from("Main view"), Text::default()])
+                .cyan()
+                .bold()
+                .top_margin(1),
+            Row::new(vec![
+                Text::from("Keys").right_aligned(),
+                Text::from("Description"),
+            ])
+            .bold(),
+            Row::new(vec![
+                Text::from("h").right_aligned(),
+                Text::from("Toggle help page"),
+            ]),
+            Row::new(vec![
+                Text::from("q | ESC").right_aligned(),
+                Text::from("Quit UI or app"),
+            ]),
+            Row::new(vec![
+                Text::from("UP | k").right_aligned(),
+                Text::from("Move cursor up one line"),
+            ]),
+            Row::new(vec![
+                Text::from("DOWN | j").right_aligned(),
+                Text::from("Move cursor down one line"),
+            ]),
+            Row::new(vec![
+                Text::from("Enter").right_aligned(),
+                Text::from("Check out branch"),
+            ]),
+            Row::new(vec![
+                Text::from("f | /").right_aligned(),
+                Text::from("Focus branch filter"),
+            ]),
+            Row::new(vec![
+                Text::from("R").right_aligned(),
+                Text::from("Reset branch filter"),
+            ]),
+            Row::new(vec![
+                Text::from("x").right_aligned(),
+                Text::from("Mark branch"),
+            ]),
+            Row::new(vec![
+                Text::from("X").right_aligned(),
+                Text::from("Clear all marked branches"),
+            ]),
+            Row::new(vec![
+                Text::from("d | DELETE").right_aligned(),
+                Text::from("Delete marked branches"),
+            ]),
+            // Filter view
+            Row::new(vec![Text::from("Branch filter mode"), Text::default()])
+                .cyan()
+                .bold()
+                .top_margin(1),
+            Row::new(vec![
+                Text::from("Keys").right_aligned(),
+                Text::from("Description"),
+            ])
+            .bold(),
+            Row::new(vec![
+                Text::from("Enter").right_aligned(),
+                Text::from("Submit filter"),
+            ]),
+            Row::new(vec![
+                Text::from("ESC").right_aligned(),
+                Text::from("Discard filter"),
+            ]),
+        ];
+        let widths = [Constraint::Length(20), Constraint::Percentage(100)];
+
+        let selected_row_style = Style::new().fg(Color::White).reversed();
+        let table = Table::new(rows, widths)
+            .column_spacing(2)
+            .row_highlight_style(selected_row_style);
+        StatefulWidget::render(table, areas[1], buffer, &mut self.help_state);
+    }
 }
 
 impl Widget for &mut App {
     fn render(self, area: Rect, buffer: &mut Buffer) {
+        if self.is_help_mode() {
+            self.render_help(area, buffer);
+            return;
+        }
+
         let [ui_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
 
