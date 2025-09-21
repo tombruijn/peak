@@ -11,7 +11,7 @@ use ratatui::{
     DefaultTerminal, TerminalOptions, Viewport,
     buffer::Buffer,
     layout::{Alignment, Constraint, Flex, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{
         Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph,
@@ -210,6 +210,10 @@ impl App {
     }
 
     fn move_to_previous_item(&mut self) {
+        if self.branches.included_indexes.is_empty() {
+            return;
+        }
+
         if let Some(cursor_index) = self.cursor_index {
             let new_cursor_index = cursor_index.checked_sub(1);
             if let Some(new_cursor_index) = new_cursor_index {
@@ -225,6 +229,10 @@ impl App {
     }
 
     fn move_to_next_item(&mut self) {
+        if self.branches.included_indexes.is_empty() {
+            return;
+        }
+
         if let Some(cursor_index) = self.cursor_index {
             if cursor_index + 1 < self.branches.included_indexes.len() {
                 let new_cursor_index = cursor_index + 1;
@@ -387,7 +395,7 @@ impl Widget for &mut App {
         }
 
         let now = Utc::now();
-        let items: Vec<ListItem> = self
+        let mut items: Vec<ListItem> = self
             .branches
             .included_indexes
             .iter()
@@ -429,6 +437,12 @@ impl Widget for &mut App {
                 ]))
             })
             .collect();
+        if items.is_empty() {
+            items.push(ListItem::new(Span::styled(
+                "No branches found. Press 'f' to edit the filter.",
+                Style::new().italic(),
+            )));
+        }
         let list = List::new(items);
         StatefulWidget::render(list, list_area, buffer, &mut self.branches.state);
 
