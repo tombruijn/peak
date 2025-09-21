@@ -109,18 +109,31 @@ impl App {
 
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                    // Force quit with CTRL+C at all times
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(());
                     }
+
+                    // Confirm branch deletion
                     KeyCode::Char('y' | 'Y') if self.display_delete_popup => {
                         self.delete_marked_items()?;
                     }
+                    // Exit branch deletion
                     KeyCode::Esc | KeyCode::Char('n' | 'N') if self.display_delete_popup => {
                         self.display_delete_popup = false;
                     }
-                    KeyCode::Enter | KeyCode::Esc if self.is_filter_mode() => {
+
+                    // Submit filter
+                    KeyCode::Enter if self.is_filter_mode() => {
                         self.switch_to_normal_mode();
                     }
+                    // Dismiss and reset filter
+                    KeyCode::Esc if self.is_filter_mode() => {
+                        self.active_filter = None;
+                        self.apply_filter();
+                        self.switch_to_normal_mode();
+                    }
+                    // Remove last character of the filter
                     KeyCode::Backspace if self.is_filter_mode() => {
                         if let Some(mut filter) = self.active_filter {
                             filter.pop();
@@ -132,6 +145,7 @@ impl App {
                             self.apply_filter();
                         }
                     }
+                    // Add character to filter
                     key_code if self.is_filter_mode() => {
                         if let Some(char) = key_code.as_char() {
                             if let Some(filter) = self.active_filter {
@@ -142,12 +156,18 @@ impl App {
                             self.apply_filter();
                         }
                     }
-                    KeyCode::Char('/') if self.is_normal_mode() => {
+
+                    // Switch to filter mode
+                    KeyCode::Char('/' | 'f') if self.is_normal_mode() => {
                         self.switch_to_filter_mode();
                     }
+
+                    // Exit in normal mode
                     KeyCode::Esc | KeyCode::Char('q') if self.is_normal_mode() => {
                         return Ok(());
                     }
+
+                    // Switch to the branch on which the line cursor is
                     KeyCode::Enter if self.is_normal_mode() => {
                         if let Err(err) = self.select_current_item() {
                             todo!("Branch deletion error not handled: {:?}", err);
@@ -155,25 +175,35 @@ impl App {
                             return Ok(());
                         }
                     }
+
+                    // Delete the marked branches
+                    // But first show a confirmation prompt
                     KeyCode::Delete | KeyCode::Char('d') if self.is_normal_mode() => {
                         if !self.branches.marked_indexes.is_empty() {
                             self.display_delete_popup = true;
                         }
                     }
+                    // Mark an item for deletion
+                    KeyCode::Char('x') => self.mark_current_item(),
+                    // Reset selection
+                    KeyCode::Char('X') => self.branches.marked_indexes.clear(),
+
+                    // Move up to the branch above
+                    // If on the first line, wrap around to the end
                     KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => {
                         self.move_to_previous_item()
                     }
+                    // Move down to the branch below
+                    // If on the last line, wrap around to the beginning
                     KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => self.move_to_next_item(),
-                    KeyCode::Char('x') => self.mark_current_item(),
+
+                    // Reset filter
                     KeyCode::Char('R') => {
                         self.active_filter = None;
                         self.apply_filter();
                     }
-                    KeyCode::Char('X') => self.branches.marked_indexes.clear(),
                     _ => {}
                 },
-                Event::Mouse(_) => {}
-                Event::Resize(_, _) => {} // TODO: rerender
                 _ => {}
             }
         }
