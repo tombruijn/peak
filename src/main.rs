@@ -131,7 +131,9 @@ impl App {
                     // Submit filter
                     KeyCode::Enter if self.is_filter_mode() => {
                         self.switch_to_normal_mode();
-                        self.cursor_index = Some(0);
+                        if !self.branches.included_indexes.is_empty() {
+                            self.cursor_index = Some(0);
+                        }
                     }
                     // Dismiss and reset filter
                     KeyCode::Esc if self.is_filter_mode() => {
