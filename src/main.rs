@@ -128,7 +128,7 @@ impl App {
                     KeyCode::Char('/') if self.is_normal_mode() => {
                         self.switch_to_filter_mode();
                     }
-                    KeyCode::Esc if self.is_normal_mode() => {
+                    KeyCode::Esc | KeyCode::Char('q') if self.is_normal_mode() => {
                         return Ok(());
                     }
                     KeyCode::Enter if self.is_normal_mode() => {
@@ -144,7 +144,6 @@ impl App {
                     }
                     KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => self.move_to_next_item(),
                     KeyCode::Char('x') => self.mark_current_item(),
-                    KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('R') => {
                         self.active_filter = None;
                         self.apply_filter();
