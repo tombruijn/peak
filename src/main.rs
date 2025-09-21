@@ -57,8 +57,8 @@ enum DisplayMode {
     Filter,
 }
 
-#[derive(Default)]
 pub struct App {
+    repository: Repository,
     viewport_height: u16,
     display_mode: DisplayMode,
     display_delete_popup: bool,
@@ -70,9 +70,14 @@ pub struct App {
 impl App {
     fn new(viewport_height: u16) -> Result<Self> {
         let mut app = Self {
+            repository: Repository::init(".")?,
+
             viewport_height,
+            display_mode: DisplayMode::default(),
+            display_delete_popup: false,
+            active_filter: None,
             cursor_index: Some(0),
-            ..Default::default()
+            branches: Branches::default(),
         };
         app.fetch_branches()?;
         app.apply_filter();
@@ -108,7 +113,7 @@ impl App {
                         return Ok(());
                     }
                     KeyCode::Char('y' | 'Y') if self.display_delete_popup => {
-                        self.delete_marked_items();
+                        self.delete_marked_items()?;
                     }
                     KeyCode::Esc | KeyCode::Char('n' | 'N') if self.display_delete_popup => {
                         self.display_delete_popup = false;
@@ -150,7 +155,7 @@ impl App {
                             return Ok(());
                         }
                     }
-                    KeyCode::Delete | KeyCode::Char('D') if self.is_normal_mode() => {
+                    KeyCode::Delete | KeyCode::Char('d') if self.is_normal_mode() => {
                         if !self.branches.marked_indexes.is_empty() {
                             self.display_delete_popup = true;
                         }
@@ -219,8 +224,36 @@ impl App {
         }
     }
 
-    fn delete_marked_items(&mut self) {
-        todo!("Delete branches: {:?}", self.branches.marked_indexes);
+    fn delete_marked_items(&mut self) -> Result<()> {
+        for branch_index in self.branches.marked_indexes.iter() {
+            let branch = &self.branches.entries[*branch_index];
+            if let Ok(mut git_branch) = self.repository.find_branch(&branch.name, BranchType::Local)
+            {
+                git_branch.delete()?;
+            }
+        }
+        // Remove mark for deleted branches
+        self.branches.marked_indexes.clear();
+        let offset = self.branches.state.offset();
+        *self.branches.state.offset_mut() = if offset > 0 {
+            // Move the offset 1 line up, in case deleting the last line
+            offset - 1
+        } else {
+            0
+        };
+        if let Some(cursor_index) = self.cursor_index {
+            self.cursor_index = if let Some(new_cursor_index) = cursor_index.checked_sub(1) {
+                // Move current line 1 line up if not on first line
+                Some(new_cursor_index)
+            } else {
+                // If deleting the first branch: set cursor to first line
+                Some(0)
+            }
+        }
+        self.display_delete_popup = false;
+        self.fetch_branches()?;
+        self.apply_filter();
+        Ok(())
     }
 
     fn mark_current_item(&mut self) {
@@ -257,8 +290,8 @@ impl App {
     }
 
     fn fetch_branches(&mut self) -> Result<()> {
-        let repository = Repository::init(".")?;
-        self.branches.entries = repository
+        self.branches.entries = self
+            .repository
             .branches(Some(BranchType::Local))?
             .filter_map(|branch_item| {
                 if let Ok((branch, _branch_type)) = branch_item {
