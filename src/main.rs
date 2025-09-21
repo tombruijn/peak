@@ -10,10 +10,13 @@ use git2::{BranchType, Repository};
 use ratatui::{
     DefaultTerminal, TerminalOptions, Viewport,
     buffer::Buffer,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Color, Style},
-    text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
+    text::{Line, Span, Text},
+    widgets::{
+        Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph,
+        StatefulWidget, Widget, Wrap,
+    },
 };
 
 const UI_HEIGHT: u16 = 1;
@@ -54,10 +57,11 @@ enum DisplayMode {
     Filter,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct App {
     viewport_height: u16,
     display_mode: DisplayMode,
+    display_delete_popup: bool,
     active_filter: Option<String>,
     cursor_index: Option<usize>,
     branches: Branches,
@@ -103,6 +107,12 @@ impl App {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(());
                     }
+                    KeyCode::Char('y' | 'Y') if self.display_delete_popup => {
+                        self.delete_marked_items();
+                    }
+                    KeyCode::Esc | KeyCode::Char('n' | 'N') if self.display_delete_popup => {
+                        self.display_delete_popup = false;
+                    }
                     KeyCode::Enter | KeyCode::Esc if self.is_filter_mode() => {
                         self.switch_to_normal_mode();
                     }
@@ -134,12 +144,16 @@ impl App {
                         return Ok(());
                     }
                     KeyCode::Enter if self.is_normal_mode() => {
-                        self.select_current_item();
-                        return Ok(());
+                        if let Err(err) = self.select_current_item() {
+                            todo!("Branch deletion error not handled: {:?}", err);
+                        } else {
+                            return Ok(());
+                        }
                     }
-                    KeyCode::Delete if self.is_normal_mode() => {
-                        self.delete_marked_items();
-                        return Ok(());
+                    KeyCode::Delete | KeyCode::Char('D') if self.is_normal_mode() => {
+                        if !self.branches.marked_indexes.is_empty() {
+                            self.display_delete_popup = true;
+                        }
                     }
                     KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => {
                         self.move_to_previous_item()
@@ -354,5 +368,79 @@ impl Widget for &mut App {
             .collect();
         let list = List::new(items);
         StatefulWidget::render(list, list_area, buffer, &mut self.branches.state);
+
+        if self.display_delete_popup {
+            let popup_area = popup_area(area, 50, 50);
+            Clear.render(popup_area, buffer);
+            let marked_branches = self.branches.marked_indexes.len();
+            let branches_label = if marked_branches == 1 {
+                "branch"
+            } else {
+                "branches"
+            };
+            let popup = ConfirmPopup {
+                title: "Confirm deletion".to_string(),
+                content: format!(
+                    "Are you sure you want to delete {} {}?",
+                    marked_branches, branches_label
+                ),
+            };
+            popup.render(popup_area, buffer);
+        }
     }
+}
+
+#[derive(Debug, Default)]
+struct ConfirmPopup {
+    title: String,
+    content: String,
+}
+
+impl Widget for ConfirmPopup {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let block = Block::new()
+            .title(self.title)
+            .title_alignment(Alignment::Center)
+            .border_type(BorderType::Rounded)
+            .borders(Borders::ALL)
+            .padding(Padding::uniform(1));
+
+        let inner_rect = block.inner(area);
+        let inner_areas = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(1), // Spacing between areas
+            Constraint::Length(1),
+        ])
+        .flex(Flex::Center)
+        .split(inner_rect);
+
+        let message_area = inner_areas[0];
+        let actions_area = inner_areas[2];
+
+        let action_inner_areas =
+            Layout::horizontal([Constraint::Length(10), Constraint::Length(10)])
+                .flex(Flex::SpaceAround)
+                .split(actions_area);
+        let yes_area = action_inner_areas[0];
+        let no_area = action_inner_areas[1];
+
+        Paragraph::new(Text::from(self.content))
+            .wrap(Wrap { trim: true })
+            .centered()
+            .render(message_area, buf);
+
+        Paragraph::new("Yes (y)").centered().render(yes_area, buf);
+        Paragraph::new("No (n)").centered().render(no_area, buf);
+
+        block.render(area, buf);
+    }
+}
+
+// Area in the center of the viewport
+fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
+    let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
+    let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
+    let [area] = vertical.areas(area);
+    let [area] = horizontal.areas(area);
+    area
 }
