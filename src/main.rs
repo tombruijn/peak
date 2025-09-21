@@ -419,28 +419,29 @@ impl App {
                 ])
             })
             .collect();
-        if rows.is_empty() {
+        let widths = if rows.is_empty() {
             rows.push(Row::new(vec![Span::styled(
                 "No branches found. Press 'f' to edit the filter.",
                 Style::new().italic(),
             )]));
-        }
-
-        let max_branch_name_column_width = area.width as f64 * 0.75;
-        let branch_name_column_constraint =
-            if max_branch_name_length as f64 > max_branch_name_column_width {
-                // If branch name is very long, cut off the column width to 75% of the screen
-                Constraint::Percentage(75)
-            } else if let Ok(value) = max_branch_name_length.try_into() {
-                // Use branch length as column width
-                // Makes it so that the time ago timestamp isn't all the way on the other side of
-                // the screen
-                Constraint::Length(value)
-            } else {
-                // Fallback in case the custom branch name width couldn't be calculated
-                Constraint::Percentage(75)
-            };
-        let widths = [branch_name_column_constraint, Constraint::Percentage(25)];
+            vec![Constraint::Fill(1)]
+        } else {
+            let max_branch_name_column_width = area.width as f64 * 0.75;
+            let branch_name_column_constraint =
+                if max_branch_name_length as f64 > max_branch_name_column_width {
+                    // If branch name is very long, cut off the column width to 75% of the screen
+                    Constraint::Percentage(75)
+                } else if let Ok(value) = max_branch_name_length.try_into() {
+                    // Use branch length as column width
+                    // Makes it so that the time ago timestamp isn't all the way on the other side of
+                    // the screen
+                    Constraint::Length(value)
+                } else {
+                    // Fallback in case the custom branch name width couldn't be calculated
+                    Constraint::Percentage(75)
+                };
+            vec![branch_name_column_constraint, Constraint::Percentage(25)]
+        };
         let table = Table::new(rows, widths).column_spacing(2);
         StatefulWidget::render(table, area, buffer, &mut self.branches.state);
     }
