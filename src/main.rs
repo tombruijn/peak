@@ -368,46 +368,8 @@ impl App {
             .sort_by(|a, b| b.last_commit_at.cmp(&a.last_commit_at));
         Ok(())
     }
-}
 
-impl Widget for &mut App {
-    fn render(self, area: Rect, buffer: &mut Buffer) {
-        let [header_area, list_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
-
-        let list_viewport_offset = if let Some(cursor_index) = self.cursor_index {
-            // -1 for 0 based index
-            let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
-            if cursor_index > list_height {
-                cursor_index.checked_sub(list_height).unwrap_or_default()
-            } else {
-                0
-            }
-        } else {
-            0
-        };
-        *self.branches.state.offset_mut() = list_viewport_offset;
-
-        if self.is_confirm_deletion_mode() {
-            Paragraph::new("Confirm branch deletion").render(header_area, buffer);
-        } else if self.is_filter_mode() || self.active_filter.is_some() {
-            let filter = if let Some(filter) = &self.active_filter {
-                filter
-            } else {
-                &"".to_string()
-            };
-            Paragraph::new(format!(
-                "Filter branches ({}/{}): {}",
-                self.branches.included_indexes.len(),
-                self.branches.entries.len(),
-                filter
-            ))
-            .render(header_area, buffer);
-        } else {
-            Paragraph::new(format!("Select branch ({}):", self.branches.entries.len()))
-                .render(header_area, buffer);
-        }
-
+    fn render_list(&mut self, area: Rect, buffer: &mut Buffer) {
         let now = Utc::now();
         let mut items: Vec<ListItem> = self
             .branches
@@ -458,7 +420,49 @@ impl Widget for &mut App {
             )));
         }
         let list = List::new(items);
-        StatefulWidget::render(list, list_area, buffer, &mut self.branches.state);
+        StatefulWidget::render(list, area, buffer, &mut self.branches.state);
+    }
+}
+
+impl Widget for &mut App {
+    fn render(self, area: Rect, buffer: &mut Buffer) {
+        let [header_area, list_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
+
+        let list_viewport_offset = if let Some(cursor_index) = self.cursor_index {
+            // -1 for 0 based index
+            let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
+            if cursor_index > list_height {
+                cursor_index.checked_sub(list_height).unwrap_or_default()
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        *self.branches.state.offset_mut() = list_viewport_offset;
+
+        if self.is_confirm_deletion_mode() {
+            Paragraph::new("Confirm branch deletion").render(header_area, buffer);
+        } else if self.is_filter_mode() || self.active_filter.is_some() {
+            let filter = if let Some(filter) = &self.active_filter {
+                filter
+            } else {
+                &"".to_string()
+            };
+            Paragraph::new(format!(
+                "Filter branches ({}/{}): {}",
+                self.branches.included_indexes.len(),
+                self.branches.entries.len(),
+                filter
+            ))
+            .render(header_area, buffer);
+        } else {
+            Paragraph::new(format!("Select branch ({}):", self.branches.entries.len()))
+                .render(header_area, buffer);
+        }
+
+        self.render_list(list_area, buffer);
 
         if self.is_confirm_deletion_mode() {
             let popup_area = popup_area(area, 50, 50);
