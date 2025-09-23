@@ -523,8 +523,7 @@ impl Widget for &mut App {
             let popup = ConfirmPopup {
                 title: "Confirm deletion".to_string(),
                 content: format!(
-                    "Are you sure you want to delete {} {}?",
-                    marked_branches,
+                    "Are you sure you want to delete {}?",
                     pluralize(marked_branches as i64, "branch", "branches")
                 ),
             };
