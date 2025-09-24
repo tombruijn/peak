@@ -23,6 +23,7 @@ const UI_HEIGHT: u16 = 1;
 const CURRENT_BRANCH_STYLE: Style = Style::new().fg(Color::Green);
 const NORMAL_BRANCH_STYLE: Style = Style::new();
 const ARROW_STYLE: Style = Style::new().fg(Color::Blue);
+const AUTHOR_NAME_STYLE: Style = Style::new().fg(Color::Magenta);
 const TIME_AGO_STYLE: Style = Style::new().fg(Color::DarkGray);
 
 fn main() -> color_eyre::Result<()> {
@@ -39,6 +40,7 @@ fn main() -> color_eyre::Result<()> {
 #[derive(Debug)]
 struct Branch {
     name: String,
+    author: String,
     current: bool,
     last_commit_at: DateTime<Utc>,
 }
@@ -356,10 +358,12 @@ impl App {
                         return None;
                     };
                     let commit = branch.get().peel_to_commit().ok()?;
+                    let author = commit.author().name()?.to_string();
                     let last_commit_at = Utc.timestamp_opt(commit.time().seconds(), 0).single()?;
 
                     Some(Branch {
                         name,
+                        author,
                         current: branch.is_head(),
                         last_commit_at,
                     })
@@ -377,6 +381,7 @@ impl App {
     fn render_list(&mut self, area: Rect, buffer: &mut Buffer) {
         let now = Utc::now();
         let mut max_branch_name_length = 0;
+        let mut max_author_name_length = 0;
         let mut rows: Vec<Row> = self
             .branches
             .included_indexes
@@ -417,8 +422,15 @@ impl App {
                 if branch_name_length > max_branch_name_length {
                     max_branch_name_length = branch_name_length;
                 }
+                let author_name_line =
+                    Line::from(vec![Span::styled(branch.author.clone(), AUTHOR_NAME_STYLE)]);
+                let author_name_length = author_name_line.width();
+                if author_name_length > max_author_name_length {
+                    max_author_name_length = author_name_length;
+                }
                 Row::new(vec![
                     branch_name_line,
+                    author_name_line,
                     Line::from(vec![Span::styled(time_ago, TIME_AGO_STYLE)]),
                 ])
             })
@@ -434,7 +446,7 @@ impl App {
             let branch_name_column_constraint =
                 if max_branch_name_length as f64 > max_branch_name_column_width {
                     // If branch name is very long, cut off the column width to 75% of the screen
-                    Constraint::Percentage(75)
+                    Constraint::Percentage(50)
                 } else if let Ok(value) = max_branch_name_length.try_into() {
                     // Use branch length as column width
                     // Makes it so that the time ago timestamp isn't all the way on the other side of
@@ -442,9 +454,13 @@ impl App {
                     Constraint::Length(value)
                 } else {
                     // Fallback in case the custom branch name width couldn't be calculated
-                    Constraint::Percentage(75)
+                    Constraint::Percentage(50)
                 };
-            vec![branch_name_column_constraint, Constraint::Percentage(25)]
+            vec![
+                branch_name_column_constraint,
+                Constraint::Length(max_author_name_length as u16),
+                Constraint::Percentage(25),
+            ]
         };
         let table = Table::new(rows, widths).column_spacing(2);
         StatefulWidget::render(table, area, buffer, &mut self.branches.state);
