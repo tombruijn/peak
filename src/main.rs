@@ -513,13 +513,16 @@ impl App {
                 } else {
                     &"".to_string()
                 };
-                Paragraph::new(format!(
-                    "Filter branches ({}/{}): {}",
-                    self.branches.included_indexes.len(),
-                    self.branches.entries.len(),
-                    filter
-                ))
-                .render(left_column, buffer);
+                let text = vec![
+                    Span::from(format!(
+                        "Filter branches ({}/{}): ",
+                        self.branches.included_indexes.len(),
+                        self.branches.entries.len(),
+                    )),
+                    Span::from(filter.to_string()),
+                    Span::from("_".to_string()).slow_blink(),
+                ];
+                Line::from(text).render(left_column, buffer);
                 Paragraph::new("Press (Enter) to submit")
                     .right_aligned()
                     .render(right_column, buffer);
