@@ -1,5 +1,3 @@
-use std::process::Command;
-
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use color_eyre::Result;
 use crossterm::{
@@ -40,6 +38,7 @@ fn main() -> color_eyre::Result<()> {
 #[derive(Debug)]
 struct Branch {
     name: String,
+    branch_type: BranchType,
     author: String,
     current: bool,
     last_commit_at: DateTime<Utc>,
@@ -222,7 +221,7 @@ impl App {
                     KeyCode::Enter if self.is_normal_mode() => {
                         if self.cursor_index.is_some() {
                             if let Err(err) = self.select_current_item() {
-                                panic!("Branch deletion error not handled: {:?}", err);
+                                panic!("Branch check out error not handled: {:?}", err);
                             } else {
                                 return Ok(());
                             }
@@ -319,14 +318,46 @@ impl App {
     fn select_current_item(&mut self) -> Result<(), String> {
         if let Some(cursor_index) = self.cursor_index {
             let branch_index = self.branches.included_indexes[cursor_index];
-            let branch = &self.branches.entries[branch_index];
-            let branch_name = branch.name.clone();
-            match Command::new("git").args(["switch", &branch_name]).output() {
-                Ok(_output) => Ok(()),
-                Err(err) => Err(format!(
-                    "Could not check out '{}' branch: {}",
-                    branch_name, err
-                )),
+            let branch_entry = &self.branches.entries[branch_index];
+            let branch_name = branch_entry.name.clone();
+
+            if let Ok(branch) = self
+                .repository
+                .find_branch(&branch_name, branch_entry.branch_type)
+            {
+                let commit = branch.get().peel_to_commit().map_err(|err| {
+                    format!("Can't get commit for '{branch_name}' branch: {err:?}")
+                })?;
+                self.repository
+                    .checkout_tree(commit.as_object(), None)
+                    .map_err(|err| format!("Can't checkout '{branch_name}' branch: {err:?}"))?;
+                match branch_entry.branch_type {
+                    BranchType::Local => {
+                        // Giving the branch name on the branch_entry directly doesn't work
+                        // Convert the branch into a reference and use that name to check out the
+                        // branch
+                        // The reference name format is 'refs/heads/<name>'
+                        let reference = branch.into_reference();
+                        let branch_name = reference.name().unwrap();
+                        self.repository.set_head(branch_name).map_err(|err| {
+                            format!("Can't set head to '{branch_name}' branch: {err:?}")
+                        })?;
+                    }
+                    BranchType::Remote => {
+                        // Check out a detached head
+                        // The normal checkout with `set_head` won't work, because we don't have a
+                        // local tracking branch
+                        self.repository
+                            .set_head_detached(commit.id())
+                            .map_err(|err| {
+                                format!("Can't set head to '{branch_name}' branch: {err:?}")
+                            })?;
+                    }
+                }
+
+                Ok(())
+            } else {
+                Err(format!("Can't find '{branch_name}' branch"))
             }
         } else {
             panic!("This should not happen: branch checkout without branch selected");
@@ -403,7 +434,7 @@ impl App {
             .repository
             .branches(self.branches.branch_type)?
             .filter_map(|branch_item| {
-                if let Ok((branch, _branch_type)) = branch_item {
+                if let Ok((branch, branch_type)) = branch_item {
                     let name = if let Ok(Some(name)) = branch.name() {
                         name.to_string()
                     } else {
@@ -415,6 +446,7 @@ impl App {
 
                     Some(Branch {
                         name,
+                        branch_type,
                         author,
                         current: branch.is_head(),
                         last_commit_at,
