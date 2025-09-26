@@ -414,7 +414,7 @@ impl App {
         let now = Utc::now();
         let mut max_branch_name_length = 0;
         let mut max_author_name_length = 0;
-        let mut rows: Vec<Row> = self
+        let rows: Vec<Row> = self
             .branches
             .included_indexes
             .iter()
@@ -467,12 +467,16 @@ impl App {
                 ])
             })
             .collect();
-        let widths = if rows.is_empty() {
-            rows.push(Row::new(vec![Span::styled(
-                "No branches found. Press 'f' to edit the filter.",
-                Style::new().italic(),
-            )]));
-            vec![Constraint::Fill(1)]
+        if rows.is_empty() {
+            let no_branches_message = if self.is_filter_mode() {
+                "No branches found."
+            } else {
+                "No branches found. Press 'f' to edit the filter or 'R' to reset it."
+            };
+            Paragraph::new(no_branches_message)
+                .italic()
+                .wrap(Wrap { trim: true })
+                .render(area, buffer);
         } else {
             let max_branch_name_column_width = area.width as f64 * 0.75;
             let branch_name_column_constraint =
@@ -488,14 +492,14 @@ impl App {
                     // Fallback in case the custom branch name width couldn't be calculated
                     Constraint::Percentage(50)
                 };
-            vec![
+            let widths = vec![
                 branch_name_column_constraint,
                 Constraint::Length(max_author_name_length as u16),
                 Constraint::Percentage(25),
-            ]
-        };
-        let table = Table::new(rows, widths).column_spacing(2);
-        StatefulWidget::render(table, area, buffer, &mut self.branches.state);
+            ];
+            let table = Table::new(rows, widths).column_spacing(2);
+            StatefulWidget::render(table, area, buffer, &mut self.branches.state);
+        }
     }
 
     fn render_ui(&mut self, area: Rect, buffer: &mut Buffer) {
