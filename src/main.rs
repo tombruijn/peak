@@ -45,11 +45,12 @@ struct Branch {
     last_commit_at: DateTime<Utc>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct Branches {
     entries: Vec<Branch>,
     included_indexes: Vec<usize>,
     marked_indexes: Vec<usize>,
+    branch_type: Option<BranchType>,
     state: TableState,
 }
 
@@ -81,7 +82,13 @@ impl App {
             display_mode: DisplayMode::default(),
             active_filter: None,
             cursor_index: Some(0),
-            branches: Branches::default(),
+            branches: Branches {
+                entries: vec![],
+                included_indexes: vec![],
+                marked_indexes: vec![],
+                branch_type: Some(BranchType::Local),
+                state: TableState::default(),
+            },
             help_state: TableState::default(),
         };
         app.fetch_branches()?;
@@ -186,6 +193,19 @@ impl App {
                     // Show help
                     KeyCode::Char('h') if self.is_normal_mode() => {
                         self.switch_to_help_mode();
+                    }
+
+                    // Switch branch types
+                    KeyCode::Char('t') if self.is_normal_mode() => {
+                        if self.branches.branch_type == Some(BranchType::Local) {
+                            self.branches.branch_type = None;
+                        } else {
+                            self.branches.branch_type = Some(BranchType::Local);
+                        }
+                        self.cursor_index = Some(0);
+                        *self.branches.state.offset_mut() = 0;
+                        self.fetch_branches()?;
+                        self.apply_filter();
                     }
 
                     // Switch to filter mode
@@ -381,7 +401,7 @@ impl App {
     fn fetch_branches(&mut self) -> Result<()> {
         self.branches.entries = self
             .repository
-            .branches(Some(BranchType::Local))?
+            .branches(self.branches.branch_type)?
             .filter_map(|branch_item| {
                 if let Ok((branch, _branch_type)) = branch_item {
                     let name = if let Ok(Some(name)) = branch.name() {
@@ -630,6 +650,10 @@ impl App {
             Row::new(vec![
                 Text::from("d | DELETE").right_aligned(),
                 Text::from("Delete marked branches"),
+            ]),
+            Row::new(vec![
+                Text::from("t").right_aligned(),
+                Text::from("Toggle showing remote branches"),
             ]),
             // Filter view
             Row::new(vec![Text::from("Branch filter mode"), Text::default()])
