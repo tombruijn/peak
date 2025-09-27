@@ -131,6 +131,11 @@ impl App {
 
     fn switch_to_confirm_deletion_mode_with_cursor_branch(&mut self) {
         if let Some(branch_index) = self.get_branch_index_for_cursor() {
+            let branch = &self.branches.entries[branch_index];
+            if branch.current {
+                // Can't mark current branch for deletion
+                return;
+            }
             self.branches.marked_indexes = vec![branch_index];
             self.display_mode = DisplayMode::ConfirmDeletion(false);
         }
@@ -434,6 +439,12 @@ impl App {
 
     fn mark_current_item(&mut self) {
         if let Some(branch_index) = self.get_branch_index_for_cursor() {
+            let branch = &self.branches.entries[branch_index];
+            if branch.current {
+                // Can't mark current branch for deletion
+                return;
+            }
+
             let index_of_mark_index = self
                 .branches
                 .marked_indexes
