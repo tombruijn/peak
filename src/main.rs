@@ -96,10 +96,6 @@ impl App {
         Ok(app)
     }
 
-    fn is_normal_mode(&self) -> bool {
-        self.display_mode == DisplayMode::Normal
-    }
-
     fn is_filter_mode(&self) -> bool {
         self.display_mode == DisplayMode::Filter
     }
@@ -146,151 +142,173 @@ impl App {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
 
             match event::read()? {
-                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                    // Force quit with CTRL+C at all times
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        return Ok(());
-                    }
-
-                    // Confirm branch deletion
-                    KeyCode::Char('y' | 'Y') if self.is_confirm_deletion_mode() => {
-                        self.delete_marked_items()?;
-                    }
-                    // Exit branch deletion
-                    KeyCode::Esc | KeyCode::Char('n' | 'N' | 'q')
-                        if self.is_confirm_deletion_mode() =>
-                    {
-                        if matches!(self.display_mode, DisplayMode::ConfirmDeletion(false)) {
-                            self.branches.marked_indexes.clear();
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    // Global keys
+                    match key.code {
+                        // Force quit with CTRL+C at all times
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            return Ok(());
                         }
-                        self.switch_to_normal_mode();
+                        _ => {}
                     }
 
-                    // Submit filter
-                    KeyCode::Enter if self.is_filter_mode() => {
-                        self.switch_to_normal_mode();
-                        if !self.branches.included_indexes.is_empty() {
-                            self.cursor_index = Some(0);
+                    match self.display_mode {
+                        DisplayMode::Normal => {
+                            match key.code {
+                                // Show help
+                                KeyCode::Char('h') => {
+                                    self.switch_to_help_mode();
+                                }
+
+                                // Switch branch types
+                                KeyCode::Char('t') => {
+                                    if self.branches.branch_type == Some(BranchType::Local) {
+                                        self.branches.branch_type = None;
+                                    } else {
+                                        self.branches.branch_type = Some(BranchType::Local);
+                                    }
+                                    self.cursor_index = Some(0);
+                                    *self.branches.state.offset_mut() = 0;
+                                    self.fetch_branches()?;
+                                    self.apply_filter();
+                                }
+
+                                // Switch to filter mode
+                                KeyCode::Char('/' | 'f') => {
+                                    self.switch_to_filter_mode();
+                                }
+
+                                // Exit in normal mode
+                                KeyCode::Esc | KeyCode::Char('q') => {
+                                    return Ok(());
+                                }
+
+                                // Switch to the branch on which the line cursor is
+                                KeyCode::Enter => {
+                                    if self.cursor_index.is_some() {
+                                        if let Err(err) = self.select_current_item() {
+                                            panic!("Branch check out error not handled: {:?}", err);
+                                        } else {
+                                            return Ok(());
+                                        }
+                                    }
+                                }
+
+                                // Delete the marked branches
+                                // But first show a confirmation prompt
+                                KeyCode::Delete | KeyCode::Char('d') => {
+                                    if self.branches.marked_indexes.is_empty() {
+                                        self.switch_to_confirm_deletion_mode_with_cursor_branch();
+                                    } else {
+                                        self.switch_to_confirm_deletion_mode();
+                                    }
+                                }
+                                // Mark an item for deletion
+                                KeyCode::Char('x') => self.mark_current_item(),
+                                // Reset selection
+                                KeyCode::Char('X') => self.branches.marked_indexes.clear(),
+
+                                // Move up to the branch above
+                                // If on the first line, wrap around to the end
+                                KeyCode::Up | KeyCode::Char('k') => self.move_to_previous_item(),
+                                // Move down to the branch below
+                                // If on the last line, wrap around to the beginning
+                                KeyCode::Down | KeyCode::Char('j') => self.move_to_next_item(),
+
+                                // Reset filter
+                                KeyCode::Char('R') => {
+                                    self.active_filter = None;
+                                    self.apply_filter();
+                                }
+
+                                _ => {}
+                            }
                         }
-                    }
-                    // Dismiss and reset filter
-                    KeyCode::Esc if self.is_filter_mode() => {
-                        self.active_filter = None;
-                        self.apply_filter();
-                        self.switch_to_normal_mode();
-                        self.cursor_index = Some(0);
-                    }
-                    // Remove last character of the filter
-                    KeyCode::Backspace if self.is_filter_mode() => {
-                        if let Some(mut filter) = self.active_filter {
-                            filter.pop();
-                            self.active_filter = if filter.is_empty() {
-                                None
-                            } else {
-                                Some(filter)
-                            };
-                            self.apply_filter();
+
+                        DisplayMode::Filter => {
+                            match key.code {
+                                // Submit filter
+                                KeyCode::Enter => {
+                                    self.switch_to_normal_mode();
+                                    if !self.branches.included_indexes.is_empty() {
+                                        self.cursor_index = Some(0);
+                                    }
+                                }
+                                // Dismiss and reset filter
+                                KeyCode::Esc => {
+                                    self.active_filter = None;
+                                    self.apply_filter();
+                                    self.switch_to_normal_mode();
+                                    self.cursor_index = Some(0);
+                                }
+                                // Remove last character of the filter
+                                KeyCode::Backspace => {
+                                    if let Some(mut filter) = self.active_filter {
+                                        filter.pop();
+                                        self.active_filter = if filter.is_empty() {
+                                            None
+                                        } else {
+                                            Some(filter)
+                                        };
+                                        self.apply_filter();
+                                    }
+                                }
+                                // Add character to filter
+                                key_code => {
+                                    if let Some(char) = key_code.as_char() {
+                                        if let Some(filter) = self.active_filter {
+                                            self.active_filter = Some(format!("{}{}", filter, char))
+                                        } else {
+                                            self.active_filter = Some(char.to_string())
+                                        };
+                                        self.apply_filter();
+                                    }
+                                }
+                            }
                         }
-                    }
-                    // Add character to filter
-                    key_code if self.is_filter_mode() => {
-                        if let Some(char) = key_code.as_char() {
-                            if let Some(filter) = self.active_filter {
-                                self.active_filter = Some(format!("{}{}", filter, char))
-                            } else {
-                                self.active_filter = Some(char.to_string())
-                            };
-                            self.apply_filter();
+
+                        DisplayMode::ConfirmDeletion(_) => {
+                            match key.code {
+                                // Confirm branch deletion
+                                KeyCode::Char('y' | 'Y') => {
+                                    self.delete_marked_items()?;
+                                }
+                                // Exit branch deletion
+                                KeyCode::Esc | KeyCode::Char('n' | 'N' | 'q') => {
+                                    if matches!(
+                                        self.display_mode,
+                                        DisplayMode::ConfirmDeletion(false)
+                                    ) {
+                                        self.branches.marked_indexes.clear();
+                                    }
+                                    self.switch_to_normal_mode();
+                                }
+
+                                _ => {}
+                            }
                         }
-                    }
 
-                    // Show help
-                    KeyCode::Char('h') if self.is_normal_mode() => {
-                        self.switch_to_help_mode();
-                    }
+                        DisplayMode::Help => {
+                            match key.code {
+                                // Exit help
+                                KeyCode::Esc | KeyCode::Char('q' | 'h') => {
+                                    self.switch_to_normal_mode();
+                                }
 
-                    // Switch branch types
-                    KeyCode::Char('t') if self.is_normal_mode() => {
-                        if self.branches.branch_type == Some(BranchType::Local) {
-                            self.branches.branch_type = None;
-                        } else {
-                            self.branches.branch_type = Some(BranchType::Local);
-                        }
-                        self.cursor_index = Some(0);
-                        *self.branches.state.offset_mut() = 0;
-                        self.fetch_branches()?;
-                        self.apply_filter();
-                    }
-
-                    // Switch to filter mode
-                    KeyCode::Char('/' | 'f') if self.is_normal_mode() => {
-                        self.switch_to_filter_mode();
-                    }
-
-                    // Exit in normal mode
-                    KeyCode::Esc | KeyCode::Char('q') if self.is_normal_mode() => {
-                        return Ok(());
-                    }
-
-                    // Switch to the branch on which the line cursor is
-                    KeyCode::Enter if self.is_normal_mode() => {
-                        if self.cursor_index.is_some() {
-                            if let Err(err) = self.select_current_item() {
-                                panic!("Branch check out error not handled: {:?}", err);
-                            } else {
-                                return Ok(());
+                                // Move up a line
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    self.help_state.select_previous();
+                                }
+                                // Move down a line
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    self.help_state.select_next();
+                                }
+                                _ => {}
                             }
                         }
                     }
+                }
 
-                    // Delete the marked branches
-                    // But first show a confirmation prompt
-                    KeyCode::Delete | KeyCode::Char('d') if self.is_normal_mode() => {
-                        if self.branches.marked_indexes.is_empty() {
-                            self.switch_to_confirm_deletion_mode_with_cursor_branch();
-                        } else {
-                            self.switch_to_confirm_deletion_mode();
-                        }
-                    }
-                    // Mark an item for deletion
-                    KeyCode::Char('x') if self.is_normal_mode() => self.mark_current_item(),
-                    // Reset selection
-                    KeyCode::Char('X') if self.is_normal_mode() => {
-                        self.branches.marked_indexes.clear()
-                    }
-
-                    // Move up to the branch above
-                    // If on the first line, wrap around to the end
-                    KeyCode::Up | KeyCode::Char('k') if self.is_normal_mode() => {
-                        self.move_to_previous_item()
-                    }
-                    // Move down to the branch below
-                    // If on the last line, wrap around to the beginning
-                    KeyCode::Down | KeyCode::Char('j') if self.is_normal_mode() => {
-                        self.move_to_next_item()
-                    }
-
-                    // Reset filter
-                    KeyCode::Char('R') if self.is_normal_mode() => {
-                        self.active_filter = None;
-                        self.apply_filter();
-                    }
-
-                    // Exit help
-                    KeyCode::Esc | KeyCode::Char('q' | 'h') if self.is_help_mode() => {
-                        self.switch_to_normal_mode();
-                    }
-
-                    // Move up a line
-                    KeyCode::Up | KeyCode::Char('k') if self.is_help_mode() => {
-                        self.help_state.select_previous();
-                    }
-                    // Move down a line
-                    KeyCode::Down | KeyCode::Char('j') if self.is_help_mode() => {
-                        self.help_state.select_next();
-                    }
-                    _ => {}
-                },
                 _ => {}
             }
         }
