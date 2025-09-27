@@ -59,7 +59,7 @@ enum DisplayMode {
     Normal,
     Help,
     Filter,
-    ConfirmDeletion,
+    ConfirmDeletion(bool), // First value is 'multi selection mode' yes or no
 }
 
 pub struct App {
@@ -105,7 +105,7 @@ impl App {
     }
 
     fn is_confirm_deletion_mode(&self) -> bool {
-        self.display_mode == DisplayMode::ConfirmDeletion
+        matches!(self.display_mode, DisplayMode::ConfirmDeletion(_))
     }
 
     fn is_help_mode(&self) -> bool {
@@ -122,11 +122,18 @@ impl App {
     }
 
     fn switch_to_confirm_deletion_mode(&mut self) {
-        self.display_mode = DisplayMode::ConfirmDeletion;
+        self.display_mode = DisplayMode::ConfirmDeletion(true);
     }
 
     fn switch_to_help_mode(&mut self) {
         self.display_mode = DisplayMode::Help;
+    }
+
+    fn switch_to_confirm_deletion_mode_with_cursor_branch(&mut self) {
+        if let Some(branch_index) = self.get_branch_index_for_cursor() {
+            self.branches.marked_indexes = vec![branch_index];
+            self.display_mode = DisplayMode::ConfirmDeletion(false);
+        }
     }
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
@@ -148,6 +155,9 @@ impl App {
                     KeyCode::Esc | KeyCode::Char('n' | 'N' | 'q')
                         if self.is_confirm_deletion_mode() =>
                     {
+                        if matches!(self.display_mode, DisplayMode::ConfirmDeletion(false)) {
+                            self.branches.marked_indexes.clear();
+                        }
                         self.switch_to_normal_mode();
                     }
 
@@ -231,7 +241,9 @@ impl App {
                     // Delete the marked branches
                     // But first show a confirmation prompt
                     KeyCode::Delete | KeyCode::Char('d') if self.is_normal_mode() => {
-                        if !self.branches.marked_indexes.is_empty() {
+                        if self.branches.marked_indexes.is_empty() {
+                            self.switch_to_confirm_deletion_mode_with_cursor_branch();
+                        } else {
                             self.switch_to_confirm_deletion_mode();
                         }
                     }
@@ -397,8 +409,7 @@ impl App {
     }
 
     fn mark_current_item(&mut self) {
-        if let Some(cursor_index) = self.cursor_index {
-            let branch_index = self.branches.included_indexes[cursor_index];
+        if let Some(branch_index) = self.get_branch_index_for_cursor() {
             let index_of_mark_index = self
                 .branches
                 .marked_indexes
@@ -409,6 +420,15 @@ impl App {
             } else {
                 self.branches.marked_indexes.push(branch_index);
             }
+        }
+    }
+
+    fn get_branch_index_for_cursor(&self) -> Option<usize> {
+        if let Some(cursor_index) = self.cursor_index {
+            let branch_index = self.branches.included_indexes[cursor_index];
+            Some(branch_index)
+        } else {
+            None
         }
     }
 
