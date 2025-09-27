@@ -297,16 +297,32 @@ impl App {
         }
 
         if let Some(cursor_index) = self.cursor_index {
+            let current_offset = self.branches.state.offset();
             let new_cursor_index = cursor_index.checked_sub(1);
             if let Some(new_cursor_index) = new_cursor_index {
+                // Move up one line normally
+                if new_cursor_index <= current_offset {
+                    // Update offset to show line with cursor
+                    let new_offset = current_offset.saturating_sub(1);
+                    *self.branches.state.offset_mut() = new_offset;
+                }
                 self.cursor_index = Some(new_cursor_index);
             } else {
+                // Wrap cursor to bottom of the list
+                let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
                 let branches_len = self.branches.included_indexes.len();
-                let new_cursor_index = branches_len - 1;
+                let new_cursor_index = branches_len - 1; // -1 because 0 index
+                // Calculate new offset so the end of the list is visible
+                // If the last list item is already visible (the new offset would be
+                // negative), do nothing.
+                if let Some(new_offset) = branches_len.checked_sub(list_height) {
+                    *self.branches.state.offset_mut() = new_offset;
+                }
                 self.cursor_index = Some(new_cursor_index);
             }
         } else {
             self.cursor_index = Some(0);
+            *self.branches.state.offset_mut() = 0;
         }
     }
 
@@ -316,14 +332,22 @@ impl App {
         }
 
         if let Some(cursor_index) = self.cursor_index {
-            if cursor_index + 1 < self.branches.included_indexes.len() {
-                let new_cursor_index = cursor_index + 1;
+            let new_cursor_index = cursor_index + 1;
+            if new_cursor_index < self.branches.included_indexes.len() {
+                let current_offset = self.branches.state.offset();
+                // -1 for 0 based index
+                let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
+                if new_cursor_index >= (current_offset + list_height) {
+                    *self.branches.state.offset_mut() = current_offset + 1;
+                }
                 self.cursor_index = Some(new_cursor_index);
             } else {
                 self.cursor_index = Some(0);
+                *self.branches.state.offset_mut() = 0;
             }
         } else {
             self.cursor_index = Some(0);
+            *self.branches.state.offset_mut() = 0;
         }
     }
 
@@ -745,19 +769,6 @@ impl Widget for &mut App {
 
         let [ui_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
-
-        let list_viewport_offset = if let Some(cursor_index) = self.cursor_index {
-            // -1 for 0 based index
-            let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
-            if cursor_index > list_height {
-                cursor_index.checked_sub(list_height).unwrap_or_default()
-            } else {
-                0
-            }
-        } else {
-            0
-        };
-        *self.branches.state.offset_mut() = list_viewport_offset;
 
         self.render_list(list_area, buffer);
         self.render_ui(ui_area, buffer);
