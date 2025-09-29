@@ -62,10 +62,16 @@ enum DisplayMode {
     ConfirmDeletion(bool), // First value is 'multi selection mode' yes or no
 }
 
+struct Alert {
+    title: String,
+    message: String,
+}
+
 pub struct App {
     repository: Repository,
     viewport_height: u16,
     display_mode: DisplayMode,
+    alert: Option<Alert>,
     active_filter: Option<String>,
     cursor_index: Option<usize>,
     branches: Branches,
@@ -76,9 +82,9 @@ impl App {
     fn new(viewport_height: u16) -> Result<Self> {
         let mut app = Self {
             repository: Repository::init(".")?,
-
             viewport_height,
             display_mode: DisplayMode::default(),
+            alert: None,
             active_filter: None,
             cursor_index: Some(0),
             branches: Branches {
@@ -143,6 +149,16 @@ impl App {
 
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    if self.alert.is_some() {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
+                                self.alert = None;
+                            }
+                            _ => (),
+                        }
+                        continue; // Ignore any other key listeners defined below
+                    }
+
                     // Global keys
                     match key.code {
                         // Force quit with CTRL+C at all times
@@ -185,12 +201,10 @@ impl App {
 
                                 // Switch to the branch on which the line cursor is
                                 KeyCode::Enter => {
-                                    if self.cursor_index.is_some() {
-                                        if let Err(err) = self.select_current_item() {
-                                            panic!("Branch check out error not handled: {:?}", err);
-                                        } else {
-                                            return Ok(());
-                                        }
+                                    if self.cursor_index.is_some()
+                                        && self.select_current_item().is_ok()
+                                    {
+                                        return Ok(());
                                     }
                                 }
 
@@ -374,7 +388,7 @@ impl App {
         }
     }
 
-    fn select_current_item(&mut self) -> Result<(), String> {
+    fn select_current_item(&mut self) -> Result<(), ()> {
         if let Some(cursor_index) = self.cursor_index {
             let branch_index = self.branches.included_indexes[cursor_index];
             let branch_entry = &self.branches.entries[branch_index];
@@ -384,12 +398,30 @@ impl App {
                 .repository
                 .find_branch(&branch_name, branch_entry.branch_type)
             {
-                let commit = branch.get().peel_to_commit().map_err(|err| {
-                    format!("Can't get commit for '{branch_name}' branch: {err:?}")
-                })?;
-                self.repository
-                    .checkout_tree(commit.as_object(), None)
-                    .map_err(|err| format!("Can't checkout '{branch_name}' branch: {err:?}"))?;
+                let commit = match branch.get().peel_to_commit() {
+                    Ok(c) => c,
+                    Err(err) => {
+                        self.alert = Some(Alert {
+                            title: "Can't checkout branch".to_string(),
+                            message: format!(
+                                "Can't get commit for '{branch_name}' branch: {}",
+                                err.message()
+                            ),
+                        });
+                        return Err(());
+                    }
+                };
+
+                if let Err(err) = self.repository.checkout_tree(commit.as_object(), None) {
+                    self.alert = Some(Alert {
+                        title: "Can't checkout branch".to_string(),
+                        message: format!(
+                            "Can't checkout '{branch_name}' branch: {}",
+                            err.message()
+                        ),
+                    });
+                    return Err(());
+                }
                 match branch_entry.branch_type {
                     BranchType::Local => {
                         // Giving the branch name on the branch_entry directly doesn't work
@@ -398,25 +430,42 @@ impl App {
                         // The reference name format is 'refs/heads/<name>'
                         let reference = branch.into_reference();
                         let branch_name = reference.name().unwrap();
-                        self.repository.set_head(branch_name).map_err(|err| {
-                            format!("Can't set head to '{branch_name}' branch: {err:?}")
-                        })?;
+                        if let Err(err) = self.repository.set_head(branch_name) {
+                            self.alert = Some(Alert {
+                                title: "Can't checkout branch".to_string(),
+                                message: format!(
+                                    "Can't set head to '{branch_name}' branch: {}",
+                                    err.message()
+                                ),
+                            });
+                            return Err(());
+                        }
                     }
                     BranchType::Remote => {
                         // Check out a detached head
                         // The normal checkout with `set_head` won't work, because we don't have a
                         // local tracking branch
-                        self.repository
-                            .set_head_detached(commit.id())
-                            .map_err(|err| {
-                                format!("Can't set head to '{branch_name}' branch: {err:?}")
-                            })?;
+                        if let Err(err) = self.repository.set_head_detached(commit.id()) {
+                            self.alert = Some(Alert {
+                                title: "Can't checkout branch".to_string(),
+                                message: format!(
+                                    "Can't set head to '{branch_name}' branch: {}",
+                                    err.message()
+                                ),
+                            });
+                            return Err(());
+                        }
                     }
                 }
 
                 Ok(())
             } else {
-                Err(format!("Can't find '{branch_name}' branch"))
+                self.alert = Some(Alert {
+                    title: "Can't checkout branch".to_string(),
+                    message: format!("Can't find '{branch_name}' branch"),
+                });
+                // TODO: refresh branch list?
+                Err(())
             }
         } else {
             panic!("This should not happen: branch checkout without branch selected");
@@ -815,6 +864,54 @@ impl Widget for &mut App {
             };
             popup.render(popup_area, buffer);
         }
+
+        if let Some(alert) = &self.alert {
+            let popup_area = popup_area(area, 50, 50);
+            Clear.render(popup_area, buffer);
+            let popup = MessagePopup {
+                title: alert.title.to_string(),
+                content: alert.message.to_string(),
+            };
+            popup.render(popup_area, buffer);
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct MessagePopup {
+    title: String,
+    content: String,
+}
+
+impl Widget for MessagePopup {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let block = Block::new()
+            .title(self.title)
+            .title_alignment(Alignment::Center)
+            .border_type(BorderType::Rounded)
+            .borders(Borders::ALL)
+            .padding(Padding::uniform(1));
+
+        let inner_rect = block.inner(area);
+        let inner_areas = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(1), // Spacing between areas
+            Constraint::Length(1),
+        ])
+        .flex(Flex::Center)
+        .split(inner_rect);
+
+        let message_area = inner_areas[0];
+        let actions_area = inner_areas[2];
+
+        Paragraph::new(Text::from(self.content))
+            .wrap(Wrap { trim: true })
+            .centered()
+            .render(message_area, buf);
+
+        Paragraph::new("OK").centered().render(actions_area, buf);
+
+        block.render(area, buf);
     }
 }
 
