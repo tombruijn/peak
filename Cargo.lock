@@ -60,17 +60,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
 
 [[package]]
-name = "brancher"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "color-eyre",
- "crossterm 0.29.0",
- "git2",
- "ratatui",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -373,6 +362,17 @@ name = "gimli"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
+
+[[package]]
+name = "git-peak"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "color-eyre",
+ "crossterm 0.29.0",
+ "git2",
+ "ratatui",
+]
 
 [[package]]
 name = "git2"

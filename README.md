@@ -1,6 +1,6 @@
-# Git Brancher
+# Peak
 
-Welcome to Brancher! A small little utility to navigate branches, quickly switch between them, and when you're done with them, delete them.
+Welcome to Peak! A little utility to navigate Git branches, quickly switch between them, and when you're done with them, delete them.
 
 ## Installation
 
@@ -8,9 +8,9 @@ TODO
 
 ## Usage
 
-In a repository run Brancher by running the `brancher` command.
+In a repository run Peak by running the `peak` command.
 
-Then, in Brancher, use the following features:
+Then, in Peak, use the following features:
 
 - [Switch to a branch](#switch-to-a-branch)
 - [Filter branches](#filter-branches)
@@ -20,7 +20,7 @@ Then, in Brancher, use the following features:
 
 ### Switch to a branch
 
-To switch (checkout) to a branch using Brancher, navigate to the branch you want to check out with the arrow keys, or the `j` key for down and the `k` key for up (VIM keybindings).
+To switch (checkout) to a branch using Peak, navigate to the branch you want to check out with the arrow keys, or the `j` key for down and the `k` key for up (VIM keybindings). Press `Enter` to switch to the selected branch.
 
 ### Filter branches
 
