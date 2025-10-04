@@ -20,7 +20,13 @@ Then, in Peak, use the following features:
 
 ### Switch to a branch
 
-To switch (checkout) to a branch using Peak, navigate to the branch you want to check out with the arrow keys, or the `j` key for down and the `k` key for up (VIM keybindings). Press `Enter` to switch to the selected branch.
+To switch (checkout) to a branch using Peak, navigate to the branch you want to check out with the arrow keys, or the `j` key for down and the `k` key for up (VIM keybindings).
+Press `Enter` to switch to the selected branch.
+
+### Navigate to a branch
+
+Use the arrow keys, `j`, or `k`, to scroll the list of branches one line at a time.
+To jump half the screen up and down in the list, use `ctrl + u` and `ctrl + d`.
 
 ### Filter branches
 

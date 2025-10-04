@@ -208,6 +208,19 @@ impl App {
                                     }
                                 }
 
+                                // Jump chunk
+                                KeyCode::Char('d')
+                                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                                {
+                                    self.jump_down_section();
+                                }
+                                // Jump chunk
+                                KeyCode::Char('u')
+                                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                                {
+                                    self.jump_up_section();
+                                }
+
                                 // Delete the marked branches
                                 // But first show a confirmation prompt
                                 KeyCode::Delete | KeyCode::Char('d') => {
@@ -385,6 +398,76 @@ impl App {
         } else {
             self.cursor_index = Some(0);
             *self.branches.state.offset_mut() = 0;
+        }
+    }
+
+    fn half_screen_height(&self) -> usize {
+        (self.viewport_height / 2) as usize
+    }
+
+    fn jump_up_section(&mut self) {
+        // Nothing to navigate: skip this behavior
+        if self.branches.included_indexes.is_empty() {
+            return;
+        }
+
+        if let Some(cursor_index) = self.cursor_index {
+            // Try to move up half the screen
+            let half_screen_height = self.half_screen_height();
+            let current_offset = self.branches.state.offset();
+            let new_cursor_index = cursor_index.checked_sub(half_screen_height);
+
+            // Is the new cursor index a positive number, can we navigate to it?
+            if let Some(new_cursor_index) = new_cursor_index {
+                // Move up the viewport if the cursor would go outside the
+                // visible area
+                if new_cursor_index <= current_offset {
+                    // Update offset to show line with cursor
+                    *self.branches.state.offset_mut() = new_cursor_index;
+                }
+                // +1 so we're not on the first line of the viewport, like the normal single line
+                // up behavior
+                self.cursor_index = Some(new_cursor_index + 1);
+            } else {
+                // If reached the top, because the new index would be a negative
+                // number, set the cursor and offset to the top
+                self.cursor_index = Some(0);
+                *self.branches.state.offset_mut() = 0;
+            }
+        }
+    }
+
+    fn jump_down_section(&mut self) {
+        // Nothing to navigate: skip this behavior
+        if self.branches.included_indexes.is_empty() {
+            return;
+        }
+
+        if let Some(cursor_index) = self.cursor_index {
+            // Try to move down half the screen
+            let new_cursor_index = cursor_index + self.half_screen_height();
+            let included_branch_len = self.branches.included_indexes.len();
+            let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
+
+            // Is the new cursor index within the list range, can we navigate to it?
+            if new_cursor_index < included_branch_len {
+                let current_offset = self.branches.state.offset();
+                // Check if the new cursor position is outside of the visible range
+                if new_cursor_index >= (current_offset + list_height) {
+                    // If so, update offset to show the line with cursor at the bottom of the
+                    // viewport
+                    *self.branches.state.offset_mut() = new_cursor_index - list_height;
+                }
+                // -1 so we're not on the last line of the viewport, like the normal single line
+                // down behavior
+                self.cursor_index = Some(new_cursor_index - 1);
+            } else {
+                // We can't navigate to the new cursor position because it's too far, so
+                // jump to the last item
+                let new_cursor_index = included_branch_len - 1;
+                self.cursor_index = Some(new_cursor_index);
+                *self.branches.state.offset_mut() = new_cursor_index - list_height;
+            }
         }
     }
 
@@ -780,6 +863,14 @@ impl App {
             Row::new(vec![
                 Text::from("DOWN | j").right_aligned(),
                 Text::from("Move cursor down one line"),
+            ]),
+            Row::new(vec![
+                Text::from("Ctrl + u").right_aligned(),
+                Text::from("Move cursor up half the screen"),
+            ]),
+            Row::new(vec![
+                Text::from("Ctrl + d").right_aligned(),
+                Text::from("Move cursor down half the screen"),
             ]),
             Row::new(vec![
                 Text::from("Enter").right_aligned(),
