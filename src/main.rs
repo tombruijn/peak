@@ -204,7 +204,33 @@ impl App {
                                     if self.cursor_index.is_some()
                                         && self.select_current_item().is_ok()
                                     {
-                                        return Ok(());
+                                        // Exit if Shift + Enter is pressed
+                                        let switch_and_exit =
+                                            key.modifiers.contains(KeyModifiers::SHIFT);
+                                        if switch_and_exit {
+                                            return Ok(());
+                                        } else {
+                                            match self.fetch_branches() {
+                                                Ok(()) => {
+                                                    if let Some(cursor_index) = self.cursor_index
+                                                        && cursor_index
+                                                            >= self.branches.entries.len()
+                                                    {
+                                                        self.cursor_index = Some(0);
+                                                    }
+                                                }
+                                                Err(err) => {
+                                                    self.alert = Some(Alert {
+                                                        title: "Error fetching branches"
+                                                            .to_string(),
+                                                        message: format!(
+                                                            "An error occurred: {}",
+                                                            err
+                                                        ),
+                                                    });
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
