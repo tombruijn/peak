@@ -210,26 +210,7 @@ impl App {
                                         if switch_and_exit {
                                             return Ok(());
                                         } else {
-                                            match self.fetch_branches() {
-                                                Ok(()) => {
-                                                    if let Some(cursor_index) = self.cursor_index
-                                                        && cursor_index
-                                                            >= self.branches.entries.len()
-                                                    {
-                                                        self.cursor_index = Some(0);
-                                                    }
-                                                }
-                                                Err(err) => {
-                                                    self.alert = Some(Alert {
-                                                        title: "Error fetching branches"
-                                                            .to_string(),
-                                                        message: format!(
-                                                            "An error occurred: {}",
-                                                            err
-                                                        ),
-                                                    });
-                                                }
-                                            }
+                                            self.refresh_branches();
                                         }
                                     }
                                 }
@@ -258,21 +239,26 @@ impl App {
                                 }
                                 // Mark an item for deletion
                                 KeyCode::Char('x') => self.mark_current_item(),
+
                                 // Reset selection
                                 KeyCode::Char('X') => self.branches.marked_indexes.clear(),
 
                                 // Move up to the branch above
                                 // If on the first line, wrap around to the end
                                 KeyCode::Up | KeyCode::Char('k') => self.move_to_previous_item(),
+
                                 // Move down to the branch below
                                 // If on the last line, wrap around to the beginning
                                 KeyCode::Down | KeyCode::Char('j') => self.move_to_next_item(),
 
                                 // Reset filter
-                                KeyCode::Char('R') => {
+                                KeyCode::Char('Z') => {
                                     self.active_filter = None;
                                     self.apply_filter();
                                 }
+
+                                // Refresh branch list
+                                KeyCode::Char('R') => self.refresh_branches(),
 
                                 _ => {}
                             }
@@ -658,6 +644,24 @@ impl App {
             })
             .map(|(index, _branch)| index)
             .collect();
+    }
+
+    fn refresh_branches(&mut self) {
+        match self.fetch_branches() {
+            Ok(()) => {
+                if let Some(cursor_index) = self.cursor_index
+                    && cursor_index >= self.branches.entries.len()
+                {
+                    self.cursor_index = Some(0);
+                }
+            }
+            Err(err) => {
+                self.alert = Some(Alert {
+                    title: "Error fetching branches".to_string(),
+                    message: format!("An error occurred: {}", err),
+                });
+            }
+        }
     }
 
     fn fetch_branches(&mut self) -> Result<()> {
