@@ -149,6 +149,11 @@ impl App {
 
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    // Use 'Q' to quit in any mode
+                    if let KeyCode::Char('Q') = key.code {
+                        return Ok(());
+                    }
+
                     if self.alert.is_some() {
                         match key.code {
                             KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
