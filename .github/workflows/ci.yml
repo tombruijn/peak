@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install rustfmt
         run: rustup component add rustfmt
       - name: Check formatting
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install clippy
         run: rustup component add clippy
       - name: Rust clippy
@@ -52,7 +52,7 @@ jobs:
         
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: cargo test --locked
         run: cargo test --locked --all-features --all-targets
