@@ -74,6 +74,7 @@ pub struct App {
     cursor_index: Option<usize>,
     branches: Branches,
     help_state: TableState,
+    debug_text: Option<String>,
 }
 
 impl App {
@@ -93,6 +94,7 @@ impl App {
                 state: TableState::default(),
             },
             help_state: TableState::default(),
+            debug_text: None,
         };
         app.load_branches()?;
         app.apply_filter();
@@ -859,8 +861,12 @@ impl App {
         if self.is_confirm_deletion_mode() {
             Span::default().render(area, buffer)
         } else {
-            let ui_layout =
-                Layout::horizontal([Constraint::Percentage(100), Constraint::Min(25)]).split(area);
+            let right_column_with = 20 + self.debug_text.as_ref().map_or(0, |s| s.len() as u16);
+            let ui_layout = Layout::horizontal([
+                Constraint::Percentage(100),
+                Constraint::Min(right_column_with),
+            ])
+            .split(area);
             let left_column = ui_layout[0];
             let right_column = ui_layout[1];
 
@@ -897,7 +903,12 @@ impl App {
                     spans.push(Span::raw(" selected"));
                 }
                 Paragraph::new(Line::from(spans)).render(left_column, buffer);
-                Paragraph::new("Press (h) for help")
+                let mut help_spans = vec![Span::raw("Press (h) for help")];
+                if let Some(debug_text) = &self.debug_text {
+                    help_spans.push(Span::raw(" | "));
+                    help_spans.push(Span::from(debug_text));
+                }
+                Paragraph::new(Line::from(help_spans))
                     .right_aligned()
                     .render(right_column, buffer);
             }
@@ -1043,7 +1054,7 @@ impl Widget for &mut App {
             Clear.render(popup_area, buffer);
             let marked_branches = self.branches.marked_indexes.len();
             let popup = ConfirmPopup {
-                title: "Confirm deletion".to_string(),
+                title: " Confirm deletion ".to_string(),
                 content: format!(
                     "Are you sure you want to delete {}?",
                     pluralize(marked_branches as i64, "branch", "branches")
