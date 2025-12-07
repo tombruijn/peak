@@ -778,7 +778,9 @@ impl App {
                         Span::styled(" *", CURRENT_BRANCH_STYLE),
                     )
                 } else {
-                    (NORMAL_BRANCH_STYLE, Span::default())
+                    // Reserve space for the current branch marker
+                    // Prevents the UI from jumping around
+                    (NORMAL_BRANCH_STYLE, Span::raw("  "))
                 };
                 let duration = now.signed_duration_since(branch.last_commit_at);
                 let time_ago = time_ago_in_words(duration);
