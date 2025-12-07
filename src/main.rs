@@ -6,7 +6,7 @@ use crossterm::{
 };
 use git2::{BranchType, Repository};
 use ratatui::{
-    DefaultTerminal, TerminalOptions, Viewport,
+    DefaultTerminal,
     buffer::Buffer,
     layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Color, Style, Stylize},
@@ -27,10 +27,8 @@ const TIME_AGO_STYLE: Style = Style::new().fg(Color::DarkGray);
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let (_terminal_columns, terminal_rows) = terminal::size()?;
-    let viewport_height = [terminal_rows, 20].iter().cloned().min().unwrap_or(20);
-    let viewport = Viewport::Inline(viewport_height);
-    let terminal = ratatui::init_with_options(TerminalOptions { viewport });
-    let result = App::new(viewport_height)?.run(terminal);
+    let terminal = ratatui::init();
+    let result = App::new(terminal_rows)?.run(terminal);
     ratatui::restore();
     result
 }
@@ -148,6 +146,9 @@ impl App {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
 
             match event::read()? {
+                Event::Resize(_columns, rows) => {
+                    self.viewport_height = rows;
+                }
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     // Use 'Q' to quit in any mode
                     if let KeyCode::Char('Q') = key.code {
