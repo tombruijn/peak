@@ -94,7 +94,7 @@ impl App {
             },
             help_state: TableState::default(),
         };
-        app.fetch_branches()?;
+        app.load_branches()?;
         app.apply_filter();
 
         Ok(app)
@@ -191,7 +191,7 @@ impl App {
                                     }
                                     self.cursor_index = Some(0);
                                     *self.branches.state.offset_mut() = 0;
-                                    self.fetch_branches()?;
+                                    self.load_branches()?;
                                     self.apply_filter();
                                 }
 
@@ -658,7 +658,7 @@ impl App {
             }
         }
         self.switch_to_normal_mode();
-        self.fetch_branches()?;
+        self.load_branches()?;
         self.apply_filter();
         Ok(())
     }
@@ -711,7 +711,7 @@ impl App {
     }
 
     fn refresh_branches(&mut self) {
-        match self.fetch_branches() {
+        match self.load_branches() {
             Ok(()) => {
                 if let Some(cursor_index) = self.cursor_index
                     && cursor_index >= self.branches.entries.len()
@@ -728,7 +728,7 @@ impl App {
         }
     }
 
-    fn fetch_branches(&mut self) -> Result<()> {
+    fn load_branches(&mut self) -> Result<()> {
         self.branches.entries = self
             .repository
             .branches(self.branches.branch_type)?
