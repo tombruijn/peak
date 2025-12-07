@@ -377,7 +377,7 @@ impl App {
                 self.cursor_index = Some(new_cursor_index);
             } else {
                 // Wrap cursor to bottom of the list
-                let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
+                let list_height = (self.viewport_height - UI_HEIGHT) as usize;
                 let branches_len = self.branches.included_indexes.len();
                 let new_cursor_index = branches_len - 1; // -1 because 0 index
                 // Calculate new offset so the end of the list is visible
@@ -401,12 +401,25 @@ impl App {
 
         if let Some(cursor_index) = self.cursor_index {
             let new_cursor_index = cursor_index + 1;
-            if new_cursor_index < self.branches.included_indexes.len() {
+            let branch_length = self.branches.included_indexes.len();
+            if new_cursor_index < branch_length {
                 let current_offset = self.branches.state.offset();
                 // -1 for 0 based index
                 let list_height = (self.viewport_height - 1 - UI_HEIGHT) as usize;
-                if new_cursor_index >= (current_offset + list_height) {
-                    *self.branches.state.offset_mut() = current_offset + 1;
+                let viewport_end = current_offset + list_height;
+                // If the cursor index moves lower than the viewport end
+                if new_cursor_index >= viewport_end {
+                    // Update the viewport location
+                    *self.branches.state.offset_mut() = if new_cursor_index == branch_length - 1 {
+                        // -1 because of zero based index
+                        // Put cursor at the bottom of the viewport to make it clear there's
+                        // nothing more in the list
+                        current_offset
+                    } else {
+                        // +1 to keep a line below the cursor
+                        // Make it clear there's more items lower in the list
+                        current_offset + 1
+                    }
                 }
                 self.cursor_index = Some(new_cursor_index);
             } else {
