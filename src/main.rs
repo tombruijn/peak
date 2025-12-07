@@ -526,6 +526,69 @@ impl App {
                     }
                 };
 
+                let local_branch = match branch_entry.branch_type {
+                    BranchType::Local => branch,
+                    BranchType::Remote => {
+                        // Strip the remote branch format of the branch name, either
+                        // - refs/remote/origin/...
+                        // - origin/...
+                        let remote_branch_name = branch_name.clone();
+                        let local_branch_name = remote_branch_name
+                            .strip_prefix("refs/remotes/")
+                            .unwrap_or(&remote_branch_name);
+                        let local_branch_name = match local_branch_name.split_once("/") {
+                            Some((_remote, name)) => name.to_string(),
+                            None => {
+                                self.alert = Some(Alert {
+                                    title: "Can't normalize branch name".to_string(),
+                                    message:
+                                        "Can't find normalize branch name. Not a remote branch?"
+                                            .to_string(),
+                                });
+                                return Err(());
+                            }
+                        };
+                        if let Ok(local_branch) = self
+                            .repository
+                            .find_branch(&local_branch_name, BranchType::Local)
+                        {
+                            // If a local branch with the same name as the remote branch already
+                            // exists, check that one out directly
+                            local_branch
+                        } else {
+                            // If no local branch exists yet, create a local branch with the name
+                            // of the remote branch
+                            match self.repository.branch(&local_branch_name, &commit, false) {
+                                Ok(mut new_local_branch) => {
+                                    if let Err(err) =
+                                        new_local_branch.set_upstream(Some(&remote_branch_name))
+                                    {
+                                        self.alert = Some(Alert {
+                                            title: "Can't set upstream of branch".to_string(),
+                                            message: format!(
+                                                "Can't set upstream of new local '{local_branch_name}' branch branch: {}",
+                                                err.message()
+                                            ),
+                                        });
+                                        return Err(());
+                                    }
+                                    new_local_branch
+                                }
+                                Err(err) => {
+                                    self.alert = Some(Alert {
+                                        title: "Can't checkout branch".to_string(),
+                                        message: format!(
+                                            "Can't set head to '{local_branch_name}' branch: {}",
+                                            err.message()
+                                        ),
+                                    });
+                                    return Err(());
+                                }
+                            }
+                        }
+                    }
+                };
+
                 if let Err(err) = self.repository.checkout_tree(commit.as_object(), None) {
                     self.alert = Some(Alert {
                         title: "Can't checkout branch".to_string(),
@@ -536,40 +599,22 @@ impl App {
                     });
                     return Err(());
                 }
-                match branch_entry.branch_type {
-                    BranchType::Local => {
-                        // Giving the branch name on the branch_entry directly doesn't work
-                        // Convert the branch into a reference and use that name to check out the
-                        // branch
-                        // The reference name format is 'refs/heads/<name>'
-                        let reference = branch.into_reference();
-                        let branch_name = reference.name().unwrap();
-                        if let Err(err) = self.repository.set_head(branch_name) {
-                            self.alert = Some(Alert {
-                                title: "Can't checkout branch".to_string(),
-                                message: format!(
-                                    "Can't set head to '{branch_name}' branch: {}",
-                                    err.message()
-                                ),
-                            });
-                            return Err(());
-                        }
-                    }
-                    BranchType::Remote => {
-                        // Check out a detached head
-                        // The normal checkout with `set_head` won't work, because we don't have a
-                        // local tracking branch
-                        if let Err(err) = self.repository.set_head_detached(commit.id()) {
-                            self.alert = Some(Alert {
-                                title: "Can't checkout branch".to_string(),
-                                message: format!(
-                                    "Can't set head to '{branch_name}' branch: {}",
-                                    err.message()
-                                ),
-                            });
-                            return Err(());
-                        }
-                    }
+
+                // Giving the branch name on the branch_entry directly doesn't work to set the head
+                // Convert the branch into a reference and use that name to check out the
+                // branch
+                // The reference name format is 'refs/heads/<name>'
+                let reference = local_branch.into_reference();
+                let branch_name = reference.name().unwrap();
+                if let Err(err) = self.repository.set_head(branch_name) {
+                    self.alert = Some(Alert {
+                        title: "Can't checkout branch".to_string(),
+                        message: format!(
+                            "Can't set head to '{branch_name}' branch: {}",
+                            err.message()
+                        ),
+                    });
+                    return Err(());
                 }
 
                 Ok(())
