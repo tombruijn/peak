@@ -13,7 +13,12 @@ pub fn time_ago_in_words(duration: chrono::Duration) -> String {
         } else if duration.num_hours() > 0 {
             pluralize(duration.num_hours(), "hour", "hours")
         } else {
-            pluralize(duration.num_minutes(), "minute", "minutes")
+            let minutes = duration.num_minutes();
+            if minutes == 0 {
+                return "just now".to_string();
+            } else {
+                pluralize(minutes, "minute", "minutes")
+            }
         }
     };
     format!("{time_ago} ago")
