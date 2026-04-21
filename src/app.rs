@@ -156,16 +156,14 @@ impl App {
                                 return Ok(());
                             }
 
-                            KeyCode::Enter => {
-                                if self.cursor_index.is_some() && self.select_current_item().is_ok()
-                                {
-                                    let switch_and_exit =
-                                        key.modifiers.contains(KeyModifiers::SHIFT);
-                                    if switch_and_exit {
-                                        return Ok(());
-                                    } else {
-                                        self.refresh_branches();
-                                    }
+                            KeyCode::Enter
+                                if self.cursor_index.is_some()
+                                    && self.select_current_item().is_ok() =>
+                            {
+                                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                    return Ok(());
+                                } else {
+                                    self.refresh_branches();
                                 }
                             }
 
@@ -616,7 +614,7 @@ impl App {
             .collect();
         self.branches
             .entries
-            .sort_by(|a, b| b.last_commit_at.cmp(&a.last_commit_at));
+            .sort_by_key(|b| std::cmp::Reverse(b.last_commit_at));
         Ok(())
     }
 
